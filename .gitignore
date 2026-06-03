@@ -58,3 +58,4 @@ forge*changelog.txt
 /src/generated/
 /src/main/cpp/Bin/
 /src/main/cpp/Include/
+/src/main/cpp/Src/*.dll
