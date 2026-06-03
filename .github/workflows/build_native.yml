@@ -1,17 +1,10 @@
 name: Build Native Binary for EOS Service Wrapper
 
-on:
-  workflow_dispatch:
-    inputs:
-      debug:
-        description: "Debug build"
-        required: false
-        type: boolean
-        default: false
+on: workflow_dispatch
 
 jobs:
   build_win_and_linux:
-    runs-on: {{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
@@ -19,16 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            artifact_prefix: linux
-            ext: .so
-            win_artifact: true
-            win_artifact_prefix: win
-            win_ext: .dll
-          - os: macos-latest
-            artifact_name: mac
-            ext: .dylib
 
     steps:
       - uses: actions/checkout@v6
