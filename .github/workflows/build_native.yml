@@ -1,6 +1,13 @@
 name: Build Native Binary for EOS Service Wrapper
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: "Debug build"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build_win_and_linux:
