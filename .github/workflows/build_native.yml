@@ -36,7 +36,7 @@ jobs:
       - name: Download SDK
         run: |
           mkdir -p EOSSDK
-          'curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=870&archive_type=sdk" --output EOSSDK/out.zip'
+          curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=870&archive_type=sdk" --output EOSSDK/out.zip
 
       - name: Unzip SDK
         run: unzip EOSSDK/out.zip -d EOSSDK
