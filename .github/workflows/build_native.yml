@@ -26,13 +26,6 @@ jobs:
       - name: Download JNI Header
         run: git clone https://github.com/Casterlabs/jni-headers.git
 
-      - name: Restore EOS SDK Cache
-        id: cache-eos-sdk-ubuntu
-        uses: actions/cache/restore@v5
-        with:
-          path: "EOSSDK"
-          key: ${{ runner.os }}-eos
-
       - name: Download SDK
         run: |
           mkdir -p EOSSDK
@@ -41,22 +34,13 @@ jobs:
       - name: Unzip SDK
         run: unzip EOSSDK/out.zip -d EOSSDK
 
-      - name: Save EOS SDK in Cache
-        id: restore-eos-sdk-ubuntu
-        uses: actions/cache/save@v5
-        with:
-          path: "EOSSDK"
-          key: ${{ runner.os }}-eos
-
       - name: Install Compilers in Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc g++
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          sudo apt-get install -y mingw-w64
-          sudo apt-get install -y gcc-aarch64-mingw-w64 g++-aarch64-mingw-w64
-          sudo apt-get install patchelf
+          sudo apt install clang lld llvm
+          sudo apt install mingw-w64-x86-64-dev mingw-w64-i686-dev
+          sudo apt install g++-aarch64-linux-gnu
 
       - name: Compile (Linux & Windows)
         if: runner.os == 'Linux'
@@ -65,10 +49,10 @@ jobs:
           if [ "${{ inputs.debug }}" == "true" ]; then
             export DO_DEBUG_ARG = "-g"
           fi
-          g++ -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -l:${{ github.workspace }}src/main/cpp/Bin/libEOSSDK-Linux-Shipping.so Main.cpp -o eosp2p_linuxx64.so
-          g++-aarch64-linux-gnu -O3 -march=aarch64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -l:${{ github.workspace }}src/main/cpp/Bin/libEOSSDK-Linux-Shippingarm64.so Main.cpp -o eosp2p_linuxarm64.so
-          x86_64-w64-mingw32-g++ -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:${{ github.workspace }}src/main/cpp/Bin/EOSSDK-Win64-Shipping.dll Main.cpp -o mainx64.dll
-          g++-aarch64-mingw-w64 -O3 -march=aarch64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:${{ github.workspace }}src/main/cpp/Bin/EOSSDK-Win64-Shippingarm64.dll Main.cpp -o mainarm64.dll
+          clang++ --target=x86_64-linux-gnu -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -l:${{ github.workspace }}src/main/cpp/Bin/libEOSSDK-Linux-Shipping.so Main.cpp -o eosp2p_linuxx64.so
+          clang++ --target=aarch64-linux-gnu -O3 -march=aarch64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -l:${{ github.workspace }}src/main/cpp/Bin/libEOSSDK-Linux-Shippingarm64.so Main.cpp -o eosp2p_linuxarm64.so
+          clang++ --target=x86_64-w64-mingw32 -fuse-ld=lld -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:${{ github.workspace }}src/main/cpp/Bin/EOSSDK-Win64-Shipping.dll Main.cpp -o mainx64.dll
+          clang++ --target=aarch64-w64-mingw32 -fuse-ld=lld -O3 -march=aarch64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:${{ github.workspace }}src/main/cpp/Bin/EOSSDK-Win64-Shippingarm64.dll Main.cpp -o mainarm64.dll
 
       - name: Compile (MacOS)
         if: runner.os == 'macOS'
