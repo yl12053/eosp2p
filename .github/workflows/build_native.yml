@@ -23,11 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Debug
-        run: |
-          echo ${{ github.workspace }}
-          ls -l ${{ github.workspace }}
-
       - name: Download JNI Header
         run: git clone https://github.com/Casterlabs/jni-headers.git
 
