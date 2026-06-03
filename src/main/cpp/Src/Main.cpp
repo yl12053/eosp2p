@@ -11,7 +11,17 @@
 #include <eos_sdk.h>
 #include <eos_connect.h>
 #include <eos_p2p.h>
+
+#ifdef __APPLE__
+#define FMT_HEADER_ONLY
+#include <fmt/core.h>
+namespace fmtns = fmt;
+#else
 #include <format>
+namespace fmtns = std;
+#endif
+
+
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -177,7 +187,7 @@ void EOS_CALL OnLogMessageReceived(const EOS_LogMessage* InMessage) {
 
     jobject statuscode = BoxInt(env, static_cast<int32_t>(InMessage->Level));
 
-    std::string s = std::format("[{}] {}", InMessage->Category, InMessage->Message);
+    std::string s = fmtns::format("[{}] {}", InMessage->Category, InMessage->Message);
     const char* str = s.c_str();
 
     jstring jstr = env->NewStringUTF(str);

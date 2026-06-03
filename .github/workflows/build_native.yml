@@ -42,6 +42,11 @@ jobs:
           sudo apt install mingw-w64-x86-64-dev mingw-w64-i686-dev
           sudo apt install g++-aarch64-linux-gnu
 
+      - name: Install Dependencies in MacOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install fmt
+
       - name: Compile (Linux & Windows)
         if: runner.os == 'Linux'
         run: |
