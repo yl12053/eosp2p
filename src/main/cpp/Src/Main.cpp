@@ -15,6 +15,7 @@
 #ifdef __APPLE__
 #define FMT_HEADER_ONLY
 #include <fmt/core.h>
+#include <fmt/format.h>
 namespace fmtns = fmt;
 #else
 #include <format>
