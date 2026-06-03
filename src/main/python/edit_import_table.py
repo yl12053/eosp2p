@@ -1,4 +1,3 @@
-import pefile
 import sys
 
 fn = sys.argv[-4]
