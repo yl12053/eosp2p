@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.szktas.eos.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "mixins.eosp2p.refmap.json",
+  "mixins": [
+    "MixinServerConnectionListener",
+    "PublishCommandMixin"
+  ],
+  "client": [
+    "IntegratedServerDebug",
+    "MixinConnection",
+    "MixinServerAddress",
+    "MixinServerNameResolver"
+  ],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixinextras": {
+    "minVersion": "0.5.4"
+  }
+}
