@@ -104,7 +104,7 @@ public class EOSNative {
         try {
             if (SystemUtils.IS_OS_MAC) {
                 System.load(loadLibraryFromClass("/libEOSSDK-Mac-Shipping.dylib", Main.MODID + "_eos.dylib"));
-                System.load(loadLibraryFromClass("/META-INF/binder/" + Main.MODID + "_mac.dylib"));
+                System.load(loadLibraryFromClass("/META-INF/binder/mac.dylib"));
             } else {
                 String arch = SystemUtils.OS_ARCH.toLowerCase();
                 boolean isArm64 = false;
@@ -116,10 +116,10 @@ public class EOSNative {
                 if (SystemUtils.IS_OS_WINDOWS) {
                     // System.load(loadLibraryFromClass("/" + (isArm64 ? "arm64" : "x64") + "/xaudio2_9redist.dll"));
                     System.load(loadLibraryFromClass("/EOSSDK-Win64-Shipping" + (isArm64 ? "arm64" : "") + ".dll", Main.MODID + "_eos.dll"));
-                    System.load(loadLibraryFromClass("/META-INF/binder/" + Main.MODID + "_win" + (isArm64 ? "arm64" : "x64") + ".dll"));
+                    System.load(loadLibraryFromClass("/META-INF/binder/win" + (isArm64 ? "arm64" : "x64") + ".dll"));
                 } else if (SystemUtils.IS_OS_LINUX) {
                     System.load(loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so"));
-                    System.load(loadLibraryFromClass("/META-INF/binder/" + Main.MODID + "_linux" + (isArm64 ? "arm64" : "x64") + ".so"));
+                    System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
                 } else {
                     throw new UnsupportedOS();
                 }
