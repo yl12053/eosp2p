@@ -1,4 +1,4 @@
-// g++ -I../Include -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include" -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include/win32" -L../Bin -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:../Bin/EOSSDK-Win64-Shipping.dll Main.cpp -o main.dll
+// g++ -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -g -I../Include -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include" -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include/win32" -L../Bin -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:../Bin/EOSSDK-Win64-Shipping.dll Main.cpp -o main.dll
 
 #include <condition_variable>
 #include <cstring>
