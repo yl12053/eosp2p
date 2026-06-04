@@ -18,7 +18,7 @@ on:
 
 jobs:
   build_native:
-    uses: ./.github/workflows/build_mod.yml
+    uses: ./.github/workflows/build_native.yml
     with:
       debug: ${{ inputs.debug }}
 
