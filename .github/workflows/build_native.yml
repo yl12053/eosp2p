@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
 
     steps:
       - uses: actions/checkout@v6
@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt install clang lld llvm gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt install clang lld llvm
           curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/20260602/llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64.tar.xz" --output out.tar.xz
           tar -Jxvf out.tar.xz
           echo "llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
@@ -48,18 +48,25 @@ jobs:
         run: |
           git clone https://github.com/fmtlib/fmt.git
 
-      - name: Compile (Linux & Windows)
-        if: runner.os == 'Linux'
+      - name: Compile x64
+        if: runner.os == 'Linux' && runner.arch == 'X64'
         run: |
           export DO_DEBUG_ARG=""
           if [ "${{ inputs.debug }}" == "true" ]; then
             export DO_DEBUG_ARG=-g
           fi
           clang++ --target=x86_64-linux-gnu -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-Linux-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o linuxx64.so
-          echo "Start Arm"
-          clang++ --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O3 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-LinuxArm64-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o linuxarm64.so
           x86_64-w64-mingw32-clang++ -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o mainx64.dll
           aarch64-w64-mingw32-clang++ --target=aarch64-w64-mingw32 -fuse-ld=lld -O3 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shippingarm64.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o mainarm64.dll
+
+      - name: Compile ARM64
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: |
+          export DO_DEBUG_ARG=""
+          if [ "${{ inputs.debug }}" == "true" ]; then
+            export DO_DEBUG_ARG=-g
+          fi
+          clang++ --target=aarch64-linux-gnu -O3 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"jni-headers/versions/17/include" -I"jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-LinuxArm64-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o linuxarm64.so
 
       - name: Compile (MacOS)
         if: runner.os == 'macOS'
@@ -74,13 +81,16 @@ jobs:
           lipo -create -output mac.dylib macx64.dylib macarm64.dylib
           
 
-      - name: Patch (Linux & Windows)
-        if: runner.os == 'Linux'
+      - name: Patch x64
+        if: runner.os == 'Linux' && runner.arch == 'X64'
         run: |
           python3 ${{ github.workspace }}/src/main/python/edit_import_table.py mainx64.dll winx64.dll EOSSDK-Win64-Shipping.dll eosp2p_eos.dll
           python3 ${{ github.workspace }}/src/main/python/edit_import_table.py mainarm64.dll winarm64.dll EOSSDK-Win64-Shippingarm64.dll eosp2p_eos.dll
           patchelf --replace-needed libEOSSDK-Linux-Shipping.so eosp2p_eos.so linuxx64.so
-          patchelf --replace-needed libEOSSDK-LinuxArm64-Shipping.so eosp2p_eos.so linuxarm64.so
+
+      - name: Patch ARM64
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: patchelf --replace-needed libEOSSDK-LinuxArm64-Shipping.so eosp2p_eos.so linuxarm64.so
 
       - name: Patch (MacOS)
         if: runner.os == 'macOS'
@@ -88,16 +98,24 @@ jobs:
           install_name_tool -change @rpath/libEOSSDK-Mac-Shipping.dylib @rpath/eosp2p_eos.dylib mac.dylib
           install_name_tool -id @rpath/eosp2p_eos.dylib EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
 
-      - name: Upload Artifact (Linux & Windows)
+      - name: Upload Artifact (x64)
         uses: actions/upload-artifact@v7
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.arch == 'X64'
         with:
-          name: linux-and-win
+          name: linux-and-win-x64
           path: |
             linuxx64.so
             linuxarm64.so
             winx64.dll
             winarm64.dll
+
+      - name: Upload Artifact (arm64)
+        uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        with:
+          name: linux-arm64
+          path: |
+            linuxarm64.so
 
       - name: Upload Artifact (MacOS)
         uses: actions/upload-artifact@v7
