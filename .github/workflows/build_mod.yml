@@ -31,12 +31,16 @@ jobs:
 
     steps:
       - name: Create Binary Folder
-        run: mkdir -p ${{ github.workspace }}/src/main/resources/META-INF/binder
+        run: |
+          mkdir -p ${{ github.workspace }}/src/main/resources/META-INF/binder
+          mkdir binder_temp
 
       - name: Fetch Binary
         uses: actions/download-artifact@v8
         with:
-          path: ${{ github.workspace }}/src/main/resources/META-INF/binder
+          path: binder-temp
+
+      - run: find binder_temp -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib"\) -exec mv -t ${{ github.workspace }}/src/main/resources/META-INF/binder {} +
 
       - name: Check Folder
         if: inputs.debug
