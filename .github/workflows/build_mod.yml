@@ -40,9 +40,13 @@ jobs:
         with:
           path: binder-temp
 
-      - run: find binder_temp -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec mv -t ${{ github.workspace }}/src/main/resources/META-INF/binder {} +
+      - name: Check Folder
+        run:
+          ls -R binder-temp
+
+      - run: find binder-temp -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec mv -t ${{ github.workspace }}/src/main/resources/META-INF/binder {} +
 
       - name: Check Folder
-        if: inputs.debug
         run:
           ls -R ${{ github.workspace }}/src/main/resources/META-INF/binder
+
