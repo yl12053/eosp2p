@@ -39,6 +39,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt install clang lld llvm
+
+      - name: Install Cross-Compiler for Windows in Linux
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: |
           curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/20260602/llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64.tar.xz" --output out.tar.xz
           tar -Jxvf out.tar.xz
           echo "llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
