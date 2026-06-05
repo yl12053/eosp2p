@@ -21,12 +21,11 @@ public class PublishCommandMixin {
         if (!(EOSNative.isCanUse() && PUID != null)) return;
         MutableComponent originalComp = cir.getReturnValue();
 
-        cir.setReturnValue(Component.translatableWithFallback(
+        cir.setReturnValue(originalComp.append("\n").append(Component.translatableWithFallback(
                 "chat.eosp2p.show_connect",
-                "%s\nAddress through EOS: %s",
-                originalComp,
+                "Address through EOS: %s",
                 ComponentUtils.copyOnClickText("EOS:" + Objects.requireNonNull(EOSNative.getConnectionKey()))
-        ));
+        )));
         cir.cancel();
     }
 }

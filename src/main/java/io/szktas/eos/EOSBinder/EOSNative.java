@@ -57,6 +57,7 @@ public class EOSNative {
         } catch (IllegalArgumentException ignored) {
             return null;
         }
+        if (rawByteArray.length == 0) return null;
         int lengthPB = Byte.toUnsignedInt(rawByteArray[0]);
         if (rawByteArray.length < lengthPB + 1) return null;
         if (lengthPB == 0) return null;

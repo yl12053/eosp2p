@@ -10,6 +10,7 @@ import io.szktas.eos.Event.ConnectClose;
 import io.szktas.eos.Event.ConnectEstablished;
 import io.szktas.eos.Event.ConnectInterrupt;
 import lombok.extern.slf4j.Slf4j;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -205,7 +206,7 @@ public class EosP2PChannel extends AbstractChannel {
                 NetworkUtil.RegisterCallback(EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID(), EosP2PChannel.this.remote.getChannelID(), dataHandler);
                 LOGGER.debug("Callback registered");
 
-                connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
+                // connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
 
                 connectPromise = promise;
 
@@ -214,7 +215,7 @@ public class EosP2PChannel extends AbstractChannel {
                     connectTimeoutFuture = eventLoop().schedule(() -> {
                         ChannelPromise connectPromise = Unsafe.this.connectPromise;
                         ConnectTimeoutException cause =
-                                new ConnectTimeoutException("connection timed out: " + remoteAddress);
+                                new ConnectTimeoutException("Connection timed out: " + remoteAddress);
                         if (connectPromise != null && connectPromise.tryFailure(cause)) {
                             close(voidPromise());
                             unregister();
@@ -232,7 +233,29 @@ public class EosP2PChannel extends AbstractChannel {
                     }
                 });
 
-                connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
+                String ret = connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
+                if (ret != null) {
+                    if (ret.startsWith("--")) {
+                        String error = ret.substring(2);
+                        eventLoop().execute(() -> {
+                            if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                            connectTimeoutFuture = null;
+                            if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p." + error).getString()))) {
+                                close(voidPromise());
+                                unregister();
+                            }
+                        });
+                    } else {
+                        eventLoop().execute(() -> {
+                            if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                            connectTimeoutFuture = null;
+                            if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p.generic", ret).getString()))) {
+                                close(voidPromise());
+                                unregister();
+                            }
+                        });
+                    }
+                }
             } catch (Throwable t) {
                 promise.tryFailure(annotateConnectException(t, remoteAddress));
                 closeIfClosed();
