@@ -52,10 +52,6 @@ jobs:
 
       - run: find binder-temp -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec mv -t ${{ github.workspace }}/src/main/resources/META-INF/binder {} +
 
-      - name: Check Folder
-        run:
-          ls -R ${{ github.workspace }}/src/main/resources/META-INF/binder
-
       - name: Download SDK
         run: |
           mkdir -p EOSSDK
@@ -79,10 +75,11 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build
+        working-directory: ${{ github.workspace }}
         run: |
-          chmod +x ${{ github.workspace }}/gradlew
-          ${{ github.workspace }}/gradlew build
-          ${{ github.workspace }}/gradlew stop
+          chmod +x ./gradlew
+          ./gradlew build
+          ./gradlew stop
 
       - name: Gather result
         run: |
