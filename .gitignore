@@ -59,6 +59,7 @@ forge*changelog.txt
 /src/main/cpp/Bin/
 /src/main/cpp/Include/
 /src/main/cpp/Src/*.dll
+/src/main/cpp/Src/*.h
 /src/main/resources/META-INF/binder/*.dll
 /src/main/resources/META-INF/binder/*.so
 /src/main/resources/META-INF/binder/*.dylib

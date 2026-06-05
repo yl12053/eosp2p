@@ -1,6 +1,7 @@
 package io.szktas.eos.Event;
 
 import io.szktas.eos.EOSBinder.EOSNative;
+import net.minecraft.Util;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -23,12 +24,11 @@ public class GameShuttingDownEventHandler {
         if (!flag) {
             pService.shutdownNow();
         }
-
     }
 
     @SubscribeEvent
     public static void onShutdown(GameShuttingDownEvent evt) {
-        shutdownExecutor(EOSNative.executor);
-
+        Util.shutdownExecutor(EOSNative.executor);
+        EOSNative.shutdownNow();
     }
 }
