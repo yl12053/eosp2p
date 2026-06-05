@@ -61,7 +61,7 @@ jobs:
       - name: Copy SDK
         run: |
           mkdir -p ${{ github.workspace }}/src/main/cpp/Bin
-          rsync -av --no-recursive EOSSDK/SDK/Bin/ ${{ github.workspace }}/src/main/cpp/Bin
+          cp EOSSDK/SDK/Bin/* ${{ github.workspace }}/src/main/cpp/Bin
           rm -f ${{ github.workspace }}/src/main/cpp/Bin/libEOSSDK-Mac-Shipping.dylib
           mv ${{ github.workspace }}/src/main/resources/META-INF/binder/libEOSSDK-Mac-Shipping.dylib ${{ github.workspace }}/src/main/cpp/Bin/
 
