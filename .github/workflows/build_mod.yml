@@ -79,7 +79,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew build
-          ./gradlew stop
+          ./gradlew --stop
 
       - name: Gather result
         run: |
