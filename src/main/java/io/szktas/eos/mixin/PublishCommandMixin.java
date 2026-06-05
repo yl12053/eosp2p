@@ -18,7 +18,7 @@ import static io.szktas.eos.EOSBinder.EOSNative.PUID;
 public class PublishCommandMixin {
     @Inject(method = "getSuccessMessage", at = @At("RETURN"), cancellable = true)
     private static void changeSuccessMessage(int pPort, CallbackInfoReturnable<MutableComponent> cir) {
-        if (!(EOSNative.IsEnabled && EOSNative.IsRunningEOS && PUID != null)) return;
+        if (!(EOSNative.isCanUse() && PUID != null)) return;
         MutableComponent originalComp = cir.getReturnValue();
 
         cir.setReturnValue(Component.translatableWithFallback(

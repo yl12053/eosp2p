@@ -111,6 +111,8 @@ static void SetThreadToHighPriority() {
 #endif
 }
 
+std::atomic isShutdown(false);
+
 class ScopedEnv {
 public:
     ScopedEnv(): jvm(globalJVM), env(nullptr), shouldDetach(false) {
@@ -171,6 +173,7 @@ inline void checkException(JNIEnv* env) {
 }
 
 void EOS_CALL OnLogMessageReceived(const EOS_LogMessage* InMessage) {
+    if (isShutdown.load()) return;
     ScopedEnv envs;
 
     if (!envs.success()) return;
@@ -236,6 +239,7 @@ inline char* getName(JNIEnv*& env) {
 }
 
 static void Login(ClientData* clientData, EOS_Connect_OnLoginCallback callback) {
+    if (isShutdown.load()) return;
     EOS_Connect_LoginOptions LoginOptions = {};
     LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
 
@@ -267,6 +271,7 @@ static void Login(ClientData* clientData, EOS_Connect_OnLoginCallback callback) 
 }
 
 static int CreatePlatform(double timeout, const char* productID, const char* clientcredid, const char* clientsecret, const char* sandboxid, const char* deploymentid) {
+    if (isShutdown.load()) return 1;
     std::lock_guard lock(platformMutex);
     if (connectHandle != nullptr) return 0;
 
@@ -318,6 +323,7 @@ static int CreatePlatform(double timeout, const char* productID, const char* cli
     NotifyAuthExpirationOptions.ApiVersion = EOS_CONNECT_ADDNOTIFYAUTHEXPIRATION_API_LATEST;
 
     EOS_Connect_AddNotifyAuthExpiration(connectHandle, &NotifyAuthExpirationOptions, nullptr, [](const EOS_Connect_AuthExpirationCallbackInfo* data) {
+        if (isShutdown.load()) return;
         ClientData* datas = new ClientData();
         Login(datas, [](const EOS_Connect_LoginCallbackInfo* data) {
             ClientData* datas = static_cast<ClientData *>(data->ClientData);
@@ -331,6 +337,7 @@ static int CreatePlatform(double timeout, const char* productID, const char* cli
 }
 
 inline EOS_P2P_SocketId* MakeSocketID(char* name) {
+    if (isShutdown.load()) return nullptr;
     if (name == nullptr) return nullptr;
     EOS_P2P_SocketId* socketId = new EOS_P2P_SocketId();
     socketId->ApiVersion = EOS_P2P_SOCKETID_API_LATEST;
@@ -421,6 +428,7 @@ template <std::mutex& lockMutex, jobject& globalConsumer, jmethodID& globalMetho
 struct Callback {
     template <CallbackNotificationStruct T>
     static void defaultMethod(const T* Data) {
+        if (isShutdown.load()) return;
         ScopedEnv envs;
         JNIEnv* env = envs;
         if (!envs.success()) return;
@@ -455,6 +463,7 @@ struct Callback {
 template <NotificationOption T, CallbackNotificationStruct V>
 static bool SubscribeP2PGenericRequest(JNIEnv* env, jstring puidj, jstring socketj, int32_t apiVersion,
     P2P_SubscribeFunc<T, V> func, P2P_CallbackType<V> callback, EOS_NotificationId& id) {
+    if (isShutdown.load()) return false;
     char* puidstr = makeCharFromJString(env, puidj);
     char* name = socketj == nullptr ? nullptr : makeCharFromJString(env, socketj);
     EOS_ProductUserId puid = EOS_ProductUserId_FromString(puidstr);
@@ -510,6 +519,7 @@ using ConnectionFunc = EOS_EResult(*)(
 
 template <ConnectionOptions T>
 static jstring doConnectionAction(JNIEnv* env, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj, int32_t apiVer, ConnectionFunc<T> func) {
+    if (isShutdown.load()) return env->NewStringUTF("--shutdown");
     char* localPUIDs = makeCharFromJString(env, localPUIDj);
     char* remotePUIDs = makeCharFromJString(env, remotePUIDj);
     char* socketIDs = SocketIDj == nullptr ? nullptr : makeCharFromJString(env, SocketIDj);
@@ -557,6 +567,7 @@ inline void throwException(JNIEnv*& env, const char* msg, const char* clazz) {
 }
 
 static bool tryReceive(JNIEnv*& env) {
+    if (isShutdown.load()) return false;
     EOS_ProductUserId localPUID;
     jobject localConsumer;
     jmethodID localMethodID;
@@ -651,6 +662,7 @@ extern "C" {
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_init(JNIEnv* env, jclass clazz, jstring name, jstring version, jobject consumer){;
+        if (isShutdown.load()) return;
         char* copyname = makeCharFromJString(env, name);
         char* copyver = makeCharFromJString(env, version);
         jobject consumerg = env->NewGlobalRef(consumer);
@@ -722,12 +734,12 @@ extern "C" {
             platformArgPointer = nullptr;
             if (ret != 0) return;
 
-            while (true) {
+            while (!isShutdown.load()) {
                 if (platformHandle != nullptr) {
                     std::lock_guard lock(p2pOptMutex);
                     EOS_Platform_Tick(platformHandle);
                 }
-                while (tryReceive(env));
+                while (!isShutdown.load() && tryReceive(env));
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
             }
         });
@@ -736,6 +748,7 @@ extern "C" {
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_SetNameGetter(JNIEnv* env, jclass clazz, jobject supplier) {
+        if (isShutdown.load()) return;
         std::lock_guard lock(supplierMutex);
         if (globalNameSupplier != nullptr) {
             env->DeleteGlobalRef(globalNameSupplier);
@@ -747,10 +760,12 @@ extern "C" {
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_SetLogging(JNIEnv* env, jclass clazz, jobject consumer) {
+        if (isShutdown.load()) return;
         setGenericCallback<callbackMutex, globalLoggingConsumer, globalBiConsumerMethod, "accept", 2>(env, consumer);
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_getPUID(JNIEnv* env, jclass clazz, jstring uniqueID, jobject callback) {
+        if (isShutdown.load()) return;
         jclass clz = env->GetObjectClass(callback);
         jmethodID callbackmethod = env->GetMethodID(clz, "accept", "(Ljava/lang/Object;)V");
 
@@ -782,6 +797,7 @@ extern "C" {
             ClientData* client_data = static_cast<ClientData*>(data->ClientData);
             if (data->ResultCode == EOS_EResult::EOS_Success || data->ResultCode == EOS_EResult::EOS_DuplicateNotAllowed) {
                 Login(client_data, [](const EOS_Connect_LoginCallbackInfo* data) {
+                    if (isShutdown.load()) return;
                     ScopedEnv envs;
                     JNIEnv* env = envs;
                     ClientData* client_data = static_cast<ClientData*>(data->ClientData);
@@ -809,6 +825,7 @@ extern "C" {
                         CreateUserOptions.ApiVersion = EOS_CONNECT_CREATEUSER_API_LATEST;
                         CreateUserOptions.ContinuanceToken = data->ContinuanceToken;
                         EOS_Connect_CreateUser(connectHandle, &CreateUserOptions, client_data, [](const EOS_Connect_CreateUserCallbackInfo* data) {
+                            if (isShutdown.load()) return;
                             ScopedEnv envs;
                             JNIEnv* env = envs;
                             ClientData* client_data = static_cast<ClientData*>(data->ClientData);
@@ -869,6 +886,7 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_initConnectionHandle(JNIEnv* env, jclass clazz, jdouble timeout, jstring pid, jstring credid, jstring secret, jstring sandbox, jstring depid, jobject callback) {
+        if (isShutdown.load()) return;
         const char* pidc = env->GetStringUTFChars(pid, nullptr);
         const char* credidc = env->GetStringUTFChars(credid, nullptr);
         const char* secretc = env->GetStringUTFChars(secret, nullptr);
@@ -902,6 +920,7 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_setNetworkStatus(JNIEnv* env, jclass clazz, jint status) {
+        if (isShutdown.load()) return;
         if (platformHandle == nullptr) return;
         EOS_ENetworkStatus target;
         if (status == 0) {
@@ -919,10 +938,12 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeIncomingConnectionRequestHandler(JNIEnv* env, jclass clazz, jobject triconsumer) {
+        if (isShutdown.load()) return;
         setGenericCallback<incomingInfoMutex, globalIncomingInfoConsumer, globalIncomingInfoMethod, "accept", 3>(env, triconsumer);
     };
 
     JNIEXPORT jboolean JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeIncomingConnectionRequest(JNIEnv* env, jclass clazz, jstring puidj, jstring socketj) {
+        if (isShutdown.load()) return false;
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONREQUEST_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionRequest,
@@ -932,10 +953,12 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeEstablishedConnectionRequestHandler(JNIEnv* env, jclass clazz, jobject triconsumer) {
+        if (isShutdown.load()) return;
         setGenericCallback<establishedInfoMutex, globalEstablishedInfoConsumer, globalEstablishedInfoMethod, "accept", 3>(env, triconsumer);
     };
 
     JNIEXPORT jboolean JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeEstablishedConnectionRequest(JNIEnv* env, jclass clazz, jstring puidj, jstring socketj) {
+        if (isShutdown.load()) return false;
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONESTABLISHED_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionEstablished,
@@ -945,10 +968,12 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeInterruptConnectionRequestHandler(JNIEnv* env, jclass clazz, jobject triconsumer) {
+        if (isShutdown.load()) return;
         setGenericCallback<interruptInfoMutex, globalInterruptInfoConsumer, globalInterruptInfoMethod, "accept", 3>(env, triconsumer);
     };
 
     JNIEXPORT jboolean JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeInterruptConnectionRequest(JNIEnv* env, jclass clazz, jstring puidj, jstring socketj) {
+        if (isShutdown.load()) return false;
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONINTERRUPTED_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionInterrupted,
@@ -958,10 +983,12 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeCloseConnectionRequestHandler(JNIEnv* env, jclass clazz, jobject triconsumer) {
+        if (isShutdown.load()) return;
         setGenericCallback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod, "accept", 3>(env, triconsumer);
     };
 
     JNIEXPORT jboolean JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeCloseConnectionRequest(JNIEnv* env, jclass clazz, jstring puidj, jstring socketj) {
+        if (isShutdown.load()) return false;
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONCLOSED_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionClosed,
@@ -971,14 +998,17 @@ extern "C" {
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_connectOrAccept(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
+        if (isShutdown.load()) return env->NewStringUTF("--shutdown");
         return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_ACCEPTCONNECTION_API_LATEST, EOS_P2P_AcceptConnection);
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_close(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
+        if (isShutdown.load()) return env->NewStringUTF("--shutdown");
         return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_CLOSECONNECTION_API_LATEST, EOS_P2P_CloseConnection);
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_send(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring socketIDj, jbyte channel, jbyteArray dataj) {
+        if (isShutdown.load()) return env->NewStringUTF("--shutdown");
         char* localPUIDs = makeCharFromJString(env, localPUIDj);
         char* remotePUIDs = makeCharFromJString(env, remotePUIDj);
         char* socketIDs = socketIDj == nullptr ? nullptr : makeCharFromJString(env, socketIDj);
@@ -1039,6 +1069,7 @@ extern "C" {
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_registerReceiveCallbackFor(JNIEnv* env, jclass clazz, jstring localPUIDj, jobject consumer) {
+        if (isShutdown.load()) return;
         std::lock_guard lock(receiveMutex);
         if (globalReceiveConsumer != nullptr) {
             env->DeleteGlobalRef(globalReceiveConsumer);
@@ -1049,5 +1080,12 @@ extern "C" {
         jclass clz = env->GetObjectClass(consumer);
         globalReceiveMethod = env->GetMethodID(clz, "accept", "(Ljava/lang/String;Ljava/lang/String;B[B)V");
         globalReceivePUID = makeCharFromJString(env, localPUIDj);
+    };
+
+    JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_shutdownNow(JNIEnv* env, jclass clazz) {
+        bool expected = false;
+        if (isShutdown.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+            EOS_Shutdown();
+        }
     };
 }

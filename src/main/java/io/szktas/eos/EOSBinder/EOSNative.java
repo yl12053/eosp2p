@@ -32,7 +32,11 @@ import static io.szktas.eos.Main.LOGGER;
 
 @Slf4j
 public class EOSNative {
-    public static final String SOCKET_NAME = UUID.randomUUID().toString().replace("-", "");
+    public static boolean isCanUse() {
+        return EOSNative.IsEnabled && EOSNative.IsRunningEOS;
+    }
+
+    public static String SOCKET_NAME = null;
 
     public static String getConnectionKey() {
         if (PUID == null) return null;
@@ -305,4 +309,6 @@ public class EOSNative {
     public static native String send(String localPUID, String remotePUID, String socketId, byte channel, byte[] bytes);
 
     public static native void registerReceiveCallbackFor(String localPUID, PacketConsumer resultConsumer);
+
+    public static native void shutdownNow();
 }

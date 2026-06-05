@@ -241,11 +241,17 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.register('generateHeaders', JavaCompile) {
+    dependsOn createMcpToSrg
+
     source = sourceSets.main.java
     classpath = configurations.compileClasspath
     options.annotationProcessorPath = configurations.annotationProcessor
     destinationDirectory.set(file("${buildDir}/classes/jni-headers"))
     options.compilerArgs << '-h' << file('src/main/cpp/Src').absolutePath
+    options.compilerArgs << ("-AreobfTsrgFile=${buildDir}/createMcpToSrg/output.tsrg" as String)
+    options.compilerArgs << "-AmappingTypes=tsrg" << "-ApluginVersion=0.7.38" << "-AdefaultObfuscationEnv=searge"
+
+    outputs.upToDateWhen { false }
 
     include "**/*.java"
 }

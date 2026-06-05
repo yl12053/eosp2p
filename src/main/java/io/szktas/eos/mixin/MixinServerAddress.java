@@ -12,12 +12,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import static io.szktas.eos.Main.LOGGER;
-
 @Mixin(ServerAddress.class)
 public class MixinServerAddress implements IServerAddress {
     @Inject(method = "isValidAddress", at = @At("HEAD"), cancellable = true)
     private static void injectValidCheck(String pHostAndPort, CallbackInfoReturnable<Boolean> cir) {
+        if (!EOSNative.isCanUse()) return;
         if (pHostAndPort.toLowerCase().startsWith("eos:")) {
             cir.setReturnValue(EOSNative.decodeConnectionKey(pHostAndPort.substring(4)) != null);
             cir.cancel();
@@ -30,6 +29,7 @@ public class MixinServerAddress implements IServerAddress {
 
     @Inject(method = "parseString", at = @At("HEAD"), cancellable = true)
     private static void injectParse(String pIp, CallbackInfoReturnable<ServerAddress> cir) {
+        if (!EOSNative.isCanUse()) return;
         if (pIp == null) return;
         if (pIp.toLowerCase().startsWith("eos:")) {
             String rbuf = pIp.substring(4);

@@ -6,8 +6,11 @@ import io.szktas.eos.Main;
 import io.szktas.eos.Network.ConnectionKey;
 import io.szktas.eos.Network.NetworkUtil;
 import io.szktas.eos.Network.PacketHandler;
+import io.szktas.eos.Util.ClientSocketNameSupplier;
+import io.szktas.eos.Util.ServerSocketNameSupplier;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 
@@ -17,10 +20,15 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import static io.szktas.eos.Config.DEDICATED_SERVER_SECRET;
 import static io.szktas.eos.EOSBinder.EOSNative.*;
 import static io.szktas.eos.Main.LOGGER;
 import static io.szktas.eos.Main.MODID;
@@ -30,6 +38,14 @@ public class FMLCommonSetupHandler {
     @SubscribeEvent
     public static void OnCommonSetup(FMLCommonSetupEvent event) {
         LOGGER.debug("Setup");
+        if (reason != null) {
+            LOGGER.error(EOSNative.reason.name());
+            return;
+        };
+        SOCKET_NAME = DistExecutor.safeRunForDist(
+                () -> ClientSocketNameSupplier::new,
+                () -> ServerSocketNameSupplier::new
+        ).get();
         EOSNative.initConnectionHandle(() -> {
             LOGGER.info("Connection handle initialization success");
             SetNameGetter(() -> NAME_SUPPLIER.getName() + MODID);
@@ -94,7 +110,6 @@ public class FMLCommonSetupHandler {
                 }
                 registerReceiveCallbackFor(puid, (rid, sid, cid, data) -> {
                     ConnectionKey key = new ConnectionKey(rid, sid, cid);
-                    LOGGER.debug("Got data from remote: {} {} {}", rid, sid, cid);
                     @Nullable Set<PacketHandler> handlers = NetworkUtil.DATA_CALLBACKS.get(key);
                     if (handlers != null) {
                         for (PacketHandler handler: handlers) {
@@ -109,7 +124,7 @@ public class FMLCommonSetupHandler {
                 LOGGER.error("Failed to initialize connection handle, reason: {}", EOSNative.reasonEOS.name());
             } else {
                 LOGGER.error("Error here {} {}", EOSNative.IsEnabled, EOSNative.reasonEOS);
-                if (!EOSNative.IsEnabled || EOSNative.reason != null) {
+                if (!EOSNative.IsEnabled && EOSNative.reason != null) {
                     LOGGER.error(EOSNative.reason.name());
                 }
                 if (EOSNative.reasonEOS != null) {

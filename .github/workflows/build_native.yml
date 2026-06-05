@@ -68,6 +68,23 @@ jobs:
         run: |
           git clone https://github.com/fmtlib/fmt.git
 
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Create Header File
+        working-directory: ${{ github.workspace }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew generateHeaders
+          ./gradlew --stop
+          
+
       - name: Compile x64
         if: runner.os == 'Linux' && runner.arch == 'X64'
         run: |

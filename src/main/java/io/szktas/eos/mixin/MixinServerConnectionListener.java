@@ -29,8 +29,6 @@ import java.util.List;
 
 import static io.szktas.eos.EOSBinder.EOSNative.PUID;
 import static io.szktas.eos.EOSBinder.EOSNative.SOCKET_NAME;
-import static net.minecraft.server.network.ServerConnectionListener.SERVER_EPOLL_EVENT_GROUP;
-import static net.minecraft.server.network.ServerConnectionListener.SERVER_EVENT_GROUP;
 
 @Mixin(ServerConnectionListener.class)
 public class MixinServerConnectionListener {
@@ -64,7 +62,7 @@ public class MixinServerConnectionListener {
             )
     )
     public void injectAfterStartTCP(InetAddress pAddress, int pPort, CallbackInfo ci, @Local LazyLoadedValue<? extends EventLoopGroup> lazyloadedvalue) {
-        if (!(EOSNative.IsEnabled && EOSNative.IsRunningEOS)) return;
+        if (!EOSNative.isCanUse()) return;
         ServerConnectionListener zThis = (ServerConnectionListener) (Object) this;
         this.channels.add(
                 new ServerBootstrap()
@@ -87,5 +85,6 @@ public class MixinServerConnectionListener {
                         .syncUninterruptibly()
         );
         LOGGER.info("Started serving on EOS:{}:{}", PUID, SOCKET_NAME);
+        LOGGER.info("Connection address: [EOS:{}]", EOSNative.getConnectionKey());
     }
 }

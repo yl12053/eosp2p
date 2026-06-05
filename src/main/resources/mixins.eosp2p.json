@@ -6,12 +6,11 @@
   "refmap": "mixins.eosp2p.refmap.json",
   "mixins": [
     "MixinServerConnectionListener",
-    "PublishCommandMixin"
+    "PublishCommandMixin",
+    "MixinConnection",
+    "MixinServerAddress"
   ],
   "client": [
-    "IntegratedServerDebug",
-    "MixinConnection",
-    "MixinServerAddress",
     "MixinServerNameResolver"
   ],
   "server": [],

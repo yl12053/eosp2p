@@ -6,6 +6,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import io.netty.bootstrap.AbstractBootstrap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
+import io.szktas.eos.EOSBinder.EOSNative;
 import io.szktas.eos.Network.EOSAddress;
 import io.szktas.eos.Network.EosP2PChannel;
 import net.minecraft.network.Connection;
@@ -22,7 +23,7 @@ import static io.szktas.eos.Main.LOGGER;
 public class MixinConnection {
     @WrapOperation(method = "connect", at = @At(value = "INVOKE", target = "Lio/netty/bootstrap/Bootstrap;channel(Ljava/lang/Class;)Lio/netty/bootstrap/AbstractBootstrap;", remap = false))
     private static AbstractBootstrap<?, ?> editChannel(Bootstrap instance, Class<?> aClass, Operation<AbstractBootstrap<?, ?>> original, @Local(argsOnly = true) InetSocketAddress addr) {
-        if (!(addr instanceof EOSAddress.EOSInetAddress EOSAddressRaw)) {
+        if (!(addr instanceof EOSAddress.EOSInetAddress EOSAddressRaw && EOSNative.isCanUse())) {
             return original.call(instance, aClass);
         }
         EOSAddress Local = new EOSAddress(PUID, EOSAddressRaw.SocketID, EOSAddressRaw.ChannelID);
@@ -32,7 +33,7 @@ public class MixinConnection {
 
     @WrapOperation(method = "connect", at = @At(value = "INVOKE", target = "Lio/netty/bootstrap/Bootstrap;connect(Ljava/net/InetAddress;I)Lio/netty/channel/ChannelFuture;", remap = false))
     private static ChannelFuture editConnect(Bootstrap instance, InetAddress inetHost, int inetPort, Operation<ChannelFuture> original, @Local(argsOnly = true) InetSocketAddress addr) {
-        if (!(addr instanceof EOSAddress.EOSInetAddress EOSAddressRaw)) {
+        if (!(addr instanceof EOSAddress.EOSInetAddress EOSAddressRaw && EOSNative.isCanUse())) {
             return original.call(instance, inetHost, inetPort);
         }
         EOSAddress Local = new EOSAddress(PUID, EOSAddressRaw.SocketID, EOSAddressRaw.ChannelID);
