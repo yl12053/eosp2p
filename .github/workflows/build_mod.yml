@@ -79,10 +79,10 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build
-        run: ${{ github.workspace }}/gradlew build
-
-      - name: Cleanup
-        run: ${{ github.workspace }}/gradlew stop
+        run: |
+          chmod +x ${{ github.workspace }}/gradlew
+          ${{ github.workspace }}/gradlew build
+          ${{ github.workspace }}/gradlew stop
 
       - name: Gather result
         run: |
