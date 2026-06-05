@@ -30,6 +30,16 @@ jobs:
         shell: bash
 
     steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Version Info
+        run: |
+          export version=$(grep '^mod_version=' gradle.properties | cut -d'=' -f2)
+          export name=$(grep '^mod_id=' gradle.properties | cut -d'=' -f2)
+
+          echo "version=$version" >> $GITHUB_ENV
+          echo "name=$name" >> $GITHUB_ENV
+
       - name: Create Binary Folder
         run: |
           mkdir -p ${{ github.workspace }}/src/main/resources/META-INF/binder
@@ -40,13 +50,47 @@ jobs:
         with:
           path: binder-temp
 
-      - name: Check Folder
-        run:
-          ls -R binder-temp
-
       - run: find binder-temp -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec mv -t ${{ github.workspace }}/src/main/resources/META-INF/binder {} +
 
       - name: Check Folder
         run:
           ls -R ${{ github.workspace }}/src/main/resources/META-INF/binder
 
+      - name: Download SDK
+        run: |
+          mkdir -p EOSSDK
+          curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=870&archive_type=sdk" --output EOSSDK/out.zip
+          unzip EOSSDK/out.zip -d EOSSDK
+
+      - name: Copy SDK
+        run: |
+          mkdir -p ${{ github.workspace }}/src/main/cpp/Bin
+          rsync -av --no-recursive EOSSDK/SDK/Bin/ ${{ github.workspace }}/src/main/cpp/Bin
+          rm -f ${{ github.workspace }}/src/main/cpp/Bin/libEOSSDK-Mac-Shipping.dylib
+          mv ${{ github.workspace }}/src/main/resources/META-INF/binder/libEOSSDK-Mac-Shipping.dylib ${{ github.workspace }}/src/main/cpp/Bin/
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build
+        run: ${{ github.workspace }}/gradlew build
+
+      - name: Cleanup
+        run: ${{ github.workspace }}/gradlew stop
+
+      - name: Gather result
+        run: |
+          mkdir result
+          mv ${{ github.workspace }}/build/libs/*-all.jar result/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: result
+          path: result/*.jar
