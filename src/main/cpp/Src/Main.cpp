@@ -202,6 +202,31 @@ void EOS_CALL OnLogMessageReceived(const EOS_LogMessage* InMessage) {
     env->DeleteLocalRef(jstr);
 }
 
+static void Log(int level, const char* InMessage) {
+    if (isShutdown.load()) return;
+    ScopedEnv envs;
+
+    if (!envs.success()) return;
+    JNIEnv* env = envs;
+
+    jobject localLoggingConsumer;
+    jmethodID localBiConsumerMethod;
+    {
+        std::lock_guard lock(callbackMutex);
+        if (globalLoggingConsumer == nullptr) return;
+        if (globalBiConsumerMethod == nullptr) return;
+        localLoggingConsumer = env->NewLocalRef(globalLoggingConsumer);
+        localBiConsumerMethod = globalBiConsumerMethod;
+    }
+
+    jstring jstr = env->NewStringUTF(InMessage);
+
+    env->CallVoidMethod(localLoggingConsumer, localBiConsumerMethod, level, jstr);
+    checkException(env);
+    env->DeleteLocalRef(localLoggingConsumer);
+    env->DeleteLocalRef(jstr);
+}
+
 struct ClientData {
     char* copyChars;
     jobject globalCallback;
@@ -840,6 +865,8 @@ extern "C" {
                                     checkException(env);
                                     env->DeleteLocalRef(str);
                                 } else {
+                                    std::string str = std::format("Exception Occur when trying to create new userdata: {}", EOS_EResult_ToString(result));
+                                    Log(299, str.c_str());
                                     env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                                     checkException(env);
                                 }
@@ -876,6 +903,8 @@ extern "C" {
             if (EOS_EResult_IsOperationComplete(data->ResultCode) == EOS_FALSE) {
                 return;
             }
+            std::string str = std::format("Exception Occur when trying to get userdata: {}", EOS_EResult_ToString(data->ResultCode));
+            Log(299, str.c_str());
             env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
             checkException(env);
             env->DeleteGlobalRef(client_data->globalCallback);
