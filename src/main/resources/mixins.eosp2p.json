@@ -5,12 +5,13 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "mixins.eosp2p.refmap.json",
   "mixins": [
-    "MixinServerConnectionListener",
-    "PublishCommandMixin",
     "MixinConnection",
-    "MixinServerAddress"
+    "MixinServerAddress",
+    "MixinServerConnectionListener",
+    "PublishCommandMixin"
   ],
   "client": [
+    "MixinMinecraft",
     "MixinServerNameResolver"
   ],
   "server": [],

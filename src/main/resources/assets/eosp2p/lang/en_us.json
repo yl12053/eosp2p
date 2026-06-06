@@ -23,5 +23,13 @@
   "command.eosp2p.subscribe_close_connection_failed": "Failed to subscribe connection closed handler",
   "command.eosp2p.by": "  Caused by: %s",
   "command.eosp2p.arch_hint": "  Current architecture: %s, Accepted: arm64, aarch64, amd64(x86-64)",
-  "command.eosp2p.os_hint": "  Current OS: %s, Expected: Windows, Linux, MacOS(Darwin) >= 11.0"
+  "command.eosp2p.os_hint": "  Current OS: %s, Expected: Windows, Linux, MacOS(Darwin) >= 10",
+  "gui.eosp2p.pretty_os_hint": "Minecraft is now running on %s operating system. \nHowever, EOSP2P can only operate in Windows, Linux or MacOS with a version >= 10.15 (Catalina)",
+  "gui.eosp2p.pretty_os_arch": "Minecraft is now running on a cpu with architecture %s. \nHowever, EOSP2P can only operate with x86-64(amd64) and arm64(aarch64) only",
+  "gui.eosp2p.dismiss_ever": "Dismiss Permanently",
+  "gui.eosp2p.dismiss": "Dismiss",
+  "gui.eosp2p.library_not_found": "Library bundled with this mod not found or corrupted. \nPlease consider to re-download EOSP2P",
+  "gui.eosp2p.init_failed": "The initialization of Epic Online Service has failed. \nEOSP2P cannot function on this instance",
+  "gui.eosp2p.puid_fail": "Failed to obtain product UID. \nEOSP2P cannot function on this instance.",
+  "gui.eosp2p.puid_fail_mac": "%s\n\nNote: There are known issues in obtaining Product UID with MacOS.\nPlease open 'Keychain Access', navigate to the Login keychain, select item with name 'com.epicgames.sdk.connect.access_token' (if multiple instance occur, choose the most recent one), navigate to the Access Control tab and select 'Allow all applications to access this item' as a temporary work-around fix."
 }

@@ -72,5 +72,9 @@ public class Config
                     Double.MAX_VALUE
             );
 
+    public static final ForgeConfigSpec.BooleanValue SHOW_HINT_ON_LAUNCH = BUILDER
+            .comment("Show hint on launch if any error occurs")
+            .define("hint_on_launch", true);
+
     static final ForgeConfigSpec SPEC = BUILDER.build();
 }

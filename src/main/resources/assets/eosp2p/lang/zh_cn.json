@@ -23,5 +23,13 @@
   "command.eosp2p.subscribe_close_connection_failed": "注册连接关闭处理器失败",
   "command.eosp2p.by": "  由于: %s",
   "command.eosp2p.arch_hint": "  目前架构: %s, 接受的架构: arm64, aarch64, amd64(x86-64)",
-  "command.eosp2p.os_hint": "  目前系统: %s, 接受的系统: Windows, Linux, MacOS(Darwin) >= 11.0"
+  "command.eosp2p.os_hint": "  目前系统: %s, 接受的系统: Windows, Linux, MacOS(Darwin) >= 11.0",
+  "gui.eosp2p.pretty_os_hint": "目前Minecraft正运行在%s操作系统之上. \n但是, EOSP2P只能在Windows, Linux 或者 版本 >= 10.15 (Catalina)的MacOS上运行",
+  "gui.eosp2p.pretty_os_arch": "目前Minecraft正在%s架构的机器上运行. \n但是, EOSP2P只支持x86-64(amd64) 和 arm64(aarch64)",
+  "gui.eosp2p.dismiss_ever": "关闭并不再显示",
+  "gui.eosp2p.dismiss": "关闭",
+  "gui.eosp2p.library_not_found": "库文件不存在或者已经损毁。\n建议重新下载EOSP2P",
+  "gui.eosp2p.init_failed": "Epic在线服务初始化失败\n本次游戏中EOSP2P将不可用",
+  "gui.eosp2p.puid_fail": "PUID获取失败\n本次游戏中EOSP2P将不可用",
+  "gui.eosp2p.puid_fail_mac": "%s\n\n注: 在MacOS上运行EOSP2P有一个已知问题.\n请打开'钥匙串访问', 打开登录钥匙串, 找到并打开'com.epicgames.sdk.connect.access_token' (如果存在多个，则选取最近创建的), 在弹出的窗口中选择访问控制页 并勾选'允许所有应用程序访问此项目'作为临时修复"
 }

@@ -1,5 +1,6 @@
 package io.szktas.eos.Event;
 
+import io.szktas.eos.Client.Gui.HintGui;
 import io.szktas.eos.EOSBinder.EOSNative;
 import io.szktas.eos.EOSBinder.PacketConsumer;
 import io.szktas.eos.Main;
@@ -8,11 +9,13 @@ import io.szktas.eos.Network.NetworkUtil;
 import io.szktas.eos.Network.PacketHandler;
 import io.szktas.eos.Util.ClientSocketNameSupplier;
 import io.szktas.eos.Util.ServerSocketNameSupplier;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import org.apache.commons.lang3.SystemUtils;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -118,7 +121,28 @@ public class FMLCommonSetupHandler {
                         }
                     }
                 });
-            }, () -> LOGGER.error("Get PUID Failed, EOS shutdown"));
+            }, () -> {
+                IsRunningEOS = false;
+                LOGGER.error("Get PUID Failed, EOS shutdown");
+                if (SystemUtils.IS_OS_MAC) {
+                    errorNeedShow = HintGui.build(
+                            Component.translatable("gui.eosp2p." + reasonEOS.name().toLowerCase()),
+                            Component.translatable("gui.eosp2p.puid_fail_mac", Component.translatable("gui.eosp2p.puid_fail")),
+                            Component.translatable("gui.eosp2p.dismiss_ever"),
+                            Component.translatable("gui.eosp2p.dismiss")
+                    );
+                    LOGGER.error(
+                            Component.translatable("gui.eosp2p.puid_fail_mac", Component.translatable("gui.eosp2p.puid_fail")).getString()
+                    );
+                } else {
+                    errorNeedShow = HintGui.build(
+                            Component.translatable("gui.eosp2p." + reasonEOS.name().toLowerCase()),
+                            Component.translatable("gui.eosp2p.puid_fail"),
+                            Component.translatable("gui.eosp2p.dismiss_ever"),
+                            Component.translatable("gui.eosp2p.dismiss")
+                    );
+                }
+            });
         }, (ret) -> {
             if (ret > 0) {
                 LOGGER.error("Failed to initialize connection handle, reason: {}", EOSNative.reasonEOS.name());
