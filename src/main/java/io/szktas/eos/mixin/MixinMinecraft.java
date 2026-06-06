@@ -3,6 +3,7 @@ package io.szktas.eos.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.realmsclient.client.RealmsClient;
+import io.szktas.eos.Client.Gui.HintGui;
 import io.szktas.eos.Config;
 import io.szktas.eos.EOSBinder.EOSNative;
 import net.minecraft.client.Minecraft;
@@ -24,10 +25,10 @@ public abstract class MixinMinecraft {
             original.call(pRealmsClient, pReloadInstance, pQuickPlayData);
             return;
         }
-        if (EOSNative.errorNeedShow == null) {
+        if (HintGui.errorToShow == null) {
             original.call(pRealmsClient, pReloadInstance, pQuickPlayData);
             return;
         }
-        this.setScreen(EOSNative.errorNeedShow.apply(() -> original.call(pRealmsClient, pReloadInstance, pQuickPlayData)));
+        this.setScreen(HintGui.errorToShow.apply(() -> original.call(pRealmsClient, pReloadInstance, pQuickPlayData)));
     }
 }

@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import java.util.function.Function;
 
 public class HintGui extends Screen {
+    public static Function<Runnable, Screen> errorToShow = null;
     private final Runnable parent;
     private final Component reason;
     private final Component buttonText;

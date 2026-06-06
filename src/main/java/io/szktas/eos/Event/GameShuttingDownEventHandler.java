@@ -11,6 +11,10 @@ public class GameShuttingDownEventHandler {
     @SubscribeEvent
     public static void onShutdown(GameShuttingDownEvent evt) {
         Util.shutdownExecutor(EOSNative.executor);
-        EOSNative.shutdownNow();
+        try {
+            EOSNative.shutdownNow();
+        } catch (UnsatisfiedLinkError ignored) {
+            return;
+        }
     }
 }

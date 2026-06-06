@@ -1,19 +1,15 @@
 package io.szktas.eos.EOSBinder;
 
-import com.mojang.realmsclient.client.RealmsClient;
 import io.szktas.eos.Client.Gui.HintGui;
 import io.szktas.eos.Config;
 import io.szktas.eos.Main;
 import io.szktas.eos.Util.*;
 import lombok.extern.slf4j.Slf4j;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.main.GameConfig;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.packs.resources.ReloadInstance;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModList;
 import org.apache.commons.lang3.SystemUtils;
-import org.apache.commons.lang3.function.TriFunction;
 import org.apache.logging.log4j.util.TriConsumer;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
@@ -33,15 +29,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static io.szktas.eos.Main.LOGGER;
 
 @Slf4j
 public class EOSNative {
-    public static Function<Runnable, Screen> errorNeedShow = null;
-
     public static boolean isCanUse() {
         return EOSNative.IsEnabled && EOSNative.IsRunningEOS;
     }
@@ -113,6 +106,11 @@ public class EOSNative {
             () -> ServerExecutor::new
     );
 
+    public final static ISetErrorScreen SET_ERROR_SCREEN = DistExecutor.safeRunForDist(
+            () -> ClientSetErrorScreen::new,
+            () -> ServerSetErrorScreen::new
+    );
+
     static {
         boolean isEnabledProcess = false;
         Reason reasonProcess = null;
@@ -126,7 +124,7 @@ public class EOSNative {
                 if (arch.contains("aarch64") || arch.contains("arm64")) {
                     isArm64 = true;
                 } else if (!(arch.contains("amd64") || arch.contains("x86_64"))) {
-                    errorNeedShow = HintGui.build(
+                    SET_ERROR_SCREEN.set(
                             Component.translatable("command.eosp2p.unsupported_arch"),
                             Component.translatable("gui.eosp2p.pretty_os_arch", SystemUtils.OS_ARCH),
                             Component.translatable("gui.eosp2p.dismiss_ever"),
@@ -142,7 +140,7 @@ public class EOSNative {
                     System.load(loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so"));
                     System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
                 } else {
-                    errorNeedShow = HintGui.build(
+                    SET_ERROR_SCREEN.set(
                             Component.translatable("command.eosp2p.unsupported_os"),
                             Component.translatable("gui.eosp2p.pretty_os_hint", SystemUtils.OS_NAME),
                             Component.translatable("gui.eosp2p.dismiss_ever"),
@@ -174,7 +172,7 @@ public class EOSNative {
             );
         } catch (IOException e) {
             LOGGER.error("Error Loading EOS Service", e);
-            errorNeedShow = HintGui.build(
+            SET_ERROR_SCREEN.set(
                     Component.translatable("command.eosp2p.library_not_found"),
                     Component.translatable("gui.eosp2p.library_not_found"),
                     Component.translatable("gui.eosp2p.dismiss_ever"),
@@ -183,7 +181,7 @@ public class EOSNative {
             reasonProcess = Reason.LIBRARY_NOT_FOUND;
         } catch (UnsatisfiedLinkError e) {
             LOGGER.error("Failed to load library", e);
-            errorNeedShow = HintGui.build(
+            SET_ERROR_SCREEN.set(
                     Component.translatable("command.eosp2p.library_corrupted"),
                     Component.translatable("gui.eosp2p.library_not_found"),
                     Component.translatable("gui.eosp2p.dismiss_ever"),
@@ -300,7 +298,7 @@ public class EOSNative {
                     if (ret == 0) {
                         resolve.run();
                     } else {
-                        errorNeedShow = HintGui.build(
+                        SET_ERROR_SCREEN.set(
                                 Component.translatable("command.eosp2p." + reasonEOS.name().toLowerCase()),
                                 Component.translatable("gui.eosp2p.init_failed"),
                                 Component.translatable("gui.eosp2p.dismiss_ever"),

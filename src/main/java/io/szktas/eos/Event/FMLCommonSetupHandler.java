@@ -125,17 +125,14 @@ public class FMLCommonSetupHandler {
                 IsRunningEOS = false;
                 LOGGER.error("Get PUID Failed, EOS shutdown");
                 if (SystemUtils.IS_OS_MAC) {
-                    errorNeedShow = HintGui.build(
+                    SET_ERROR_SCREEN.set(
                             Component.translatable("gui.eosp2p." + reasonEOS.name().toLowerCase()),
                             Component.translatable("gui.eosp2p.puid_fail_mac", Component.translatable("gui.eosp2p.puid_fail")),
                             Component.translatable("gui.eosp2p.dismiss_ever"),
                             Component.translatable("gui.eosp2p.dismiss")
                     );
-                    LOGGER.error(
-                            Component.translatable("gui.eosp2p.puid_fail_mac", Component.translatable("gui.eosp2p.puid_fail")).getString()
-                    );
                 } else {
-                    errorNeedShow = HintGui.build(
+                    SET_ERROR_SCREEN.set(
                             Component.translatable("gui.eosp2p." + reasonEOS.name().toLowerCase()),
                             Component.translatable("gui.eosp2p.puid_fail"),
                             Component.translatable("gui.eosp2p.dismiss_ever"),
