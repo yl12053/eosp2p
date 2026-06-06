@@ -134,6 +134,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           install_name_tool -change @rpath/libEOSSDK-Mac-Shipping.dylib @rpath/${{ env.name }}_eos.dylib mac.dylib
+          codesign --force --sign - --options=runtime --deep mac.dylib
           install_name_tool -id @rpath/${{ env.name }}_eos.dylib EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
 
       - name: Upload Artifact (x64)
