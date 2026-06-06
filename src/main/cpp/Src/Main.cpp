@@ -805,7 +805,7 @@ extern "C" {
                 }
                 globalQueue.execute_until_empty();
                 while (!isShutdown.load() && tryReceive(env));
-                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         });
 
