@@ -26,7 +26,7 @@
   "command.eosp2p.os_hint": "  Current OS: %s, Expected: Windows, Linux, MacOS(Darwin) >= 10",
   "gui.eosp2p.pretty_os_hint": "Minecraft is now running on %s operating system. \nHowever, EOSP2P can only operate in Windows, Linux or MacOS with a version >= 10.15 (Catalina)",
   "gui.eosp2p.pretty_os_arch": "Minecraft is now running on a cpu with architecture %s. \nHowever, EOSP2P can only operate with x86-64(amd64) and arm64(aarch64) only",
-  "gui.eosp2p.dismiss_ever": "Dismiss Permanently",
+  "gui.eosp2p.dismiss_ever": "Don't show again",
   "gui.eosp2p.dismiss": "Dismiss",
   "gui.eosp2p.library_not_found": "Library bundled with this mod not found or corrupted. \nPlease consider to re-download EOSP2P",
   "gui.eosp2p.init_failed": "The initialization of Epic Online Service has failed. \nEOSP2P cannot function on this instance",
