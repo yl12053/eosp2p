@@ -83,9 +83,18 @@ public class EosP2PChannel extends AbstractChannel {
     }
 
     @Override
+    public ChannelFuture close() {
+        LOGGER.debug("Close:", new RuntimeException("Close stack"));
+        return super.close();
+    }
+
+    @Override
     protected void doClose() throws Exception {
+        LOGGER.debug("Close:", new RuntimeException("Close stack"));
         if (isClosed.compareAndSet(false, true)) {
-            EOSNative.close(local.getPUID(), remote.getPUID(), remote.getSocketID());
+            EOSNative.close(local.getPUID(), remote.getPUID(), remote.getSocketID(), (ret) -> {
+                if (ret != null) LOGGER.error("Unexpected error when closing connection: {}", ret);
+            });
             ((Unsafe) this.unsafe()).unregister();
             queue.forEach(ReferenceCountUtil::safeRelease);
         }
@@ -233,29 +242,28 @@ public class EosP2PChannel extends AbstractChannel {
                     }
                 });
 
-                String ret = connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
-                if (ret != null) {
-                    if (ret.startsWith("--")) {
-                        String error = ret.substring(2);
-                        eventLoop().execute(() -> {
-                            if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
-                            connectTimeoutFuture = null;
-                            if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p." + error).getString()))) {
-                                close(voidPromise());
-                                unregister();
+                connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID(), (ret) -> {
+                    eventLoop().execute(() -> {
+                        if (ret != null) {
+                            if (ret.startsWith("--")) {
+                                String error = ret.substring(2);
+                                if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                                connectTimeoutFuture = null;
+                                if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p." + error).getString()))) {
+                                    close(voidPromise());
+                                    unregister();
+                                }
+                            } else {
+                                if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                                connectTimeoutFuture = null;
+                                if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p.generic", ret).getString()))) {
+                                    close(voidPromise());
+                                    unregister();
+                                }
                             }
-                        });
-                    } else {
-                        eventLoop().execute(() -> {
-                            if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
-                            connectTimeoutFuture = null;
-                            if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p.generic", ret).getString()))) {
-                                close(voidPromise());
-                                unregister();
-                            }
-                        });
-                    }
-                }
+                        }
+                    });
+                });
             } catch (Throwable t) {
                 promise.tryFailure(annotateConnectException(t, remoteAddress));
                 closeIfClosed();
