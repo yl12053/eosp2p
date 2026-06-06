@@ -865,7 +865,7 @@ extern "C" {
                                     checkException(env);
                                     env->DeleteLocalRef(str);
                                 } else {
-                                    std::string str = std::format("Exception Occur when trying to create new userdata: {}", EOS_EResult_ToString(result));
+                                    std::string str = fmtns::format("Exception Occur when trying to create new userdata: {}", EOS_EResult_ToString(result));
                                     Log(299, str.c_str());
                                     env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                                     checkException(env);
