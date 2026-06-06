@@ -221,7 +221,9 @@ static void Log(int level, const char* InMessage) {
 
     jstring jstr = env->NewStringUTF(InMessage);
 
-    env->CallVoidMethod(localLoggingConsumer, localBiConsumerMethod, level, jstr);
+    jobject statuscode = BoxInt(env, level);
+
+    env->CallVoidMethod(localLoggingConsumer, localBiConsumerMethod, statuscode, jstr);
     checkException(env);
     env->DeleteLocalRef(localLoggingConsumer);
     env->DeleteLocalRef(jstr);
