@@ -520,41 +520,6 @@ struct Callback {
         if (socket != nullptr) env->DeleteLocalRef(socket);
         env->DeleteLocalRef(triconsumer);
     }
-
-    template <CallbackNotificationStruct T>
-    static void closeOnly(const T* Data) {
-        EOS_P2P_OnRemoteConnectionClosedInfo* info = static_cast<EOS_P2P_OnRemoteConnectionClosedInfo *>(Data);
-        Log(0, fmtns::format("Shutdown due to: {}", info->Reason).c_str());
-        if (isShutdown.load()) return;
-        ScopedEnv envs;
-        JNIEnv* env = envs;
-        if (!envs.success()) return;
-        jobject triconsumer;
-        jmethodID trimethod;
-        {
-            std::lock_guard lock(lockMutex);
-            if (globalConsumer == nullptr) return;
-            triconsumer = env->NewLocalRef(globalConsumer);
-            trimethod = globalMethodID;
-        }
-        std::vector<char> localpid(EOS_PRODUCTUSERID_MAX_LENGTH + 1);
-        std::vector<char> remotepid(EOS_PRODUCTUSERID_MAX_LENGTH + 1);
-        int32_t buffer_size = EOS_PRODUCTUSERID_MAX_LENGTH + 1;
-        EOS_ProductUserId_ToString(Data->LocalUserId, localpid.data(), &buffer_size);
-        EOS_ProductUserId_ToString(Data->RemoteUserId, remotepid.data(), &buffer_size);
-
-        jstring local = env->NewStringUTF(localpid.data());
-        jstring remote = env->NewStringUTF(remotepid.data());
-        jstring socket = Data->SocketId == nullptr ? nullptr : env->NewStringUTF(Data->SocketId->SocketName);
-
-        env->CallVoidMethod(triconsumer, trimethod, local, remote, socket);
-        checkException(env);
-
-        env->DeleteLocalRef(local);
-        env->DeleteLocalRef(remote);
-        if (socket != nullptr) env->DeleteLocalRef(socket);
-        env->DeleteLocalRef(triconsumer);
-    }
 };
 
 template <NotificationOption T, CallbackNotificationStruct V>
@@ -1099,7 +1064,7 @@ extern "C" {
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONCLOSED_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionClosed,
-            Callback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod>::closeOnly,
+            Callback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod>::defaultMethod,
             ConnectionClosedNotificationId
         );
     };
