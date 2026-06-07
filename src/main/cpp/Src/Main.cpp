@@ -99,34 +99,6 @@ static PlatformArg* platformArgPointer = nullptr;
 
 std::atomic isShutdown(false);
 
-class SafeQueue {
-private:
-    std::queue<std::function<void()>> Queue;
-    std::mutex mutex;
-
-public:
-    void push(std::function<void()> val) {
-        std::lock_guard lock(mutex);
-        Queue.push(val);
-    }
-
-    void execute_until_empty() {
-        std::queue<std::function<void()>> swapQueue;
-        {
-            std::lock_guard lock(mutex);
-            std::swap(swapQueue, Queue);
-        }
-        while (!swapQueue.empty()) {
-            if (isShutdown.load()) return;
-            std::function<void()> value = std::move(swapQueue.front());
-            swapQueue.pop();
-            value();
-        }
-    }
-};
-
-static SafeQueue globalQueue;
-
 
 #ifdef _WIN32
 #include <windows.h>
@@ -170,15 +142,6 @@ private:
     JNIEnv* env;
     bool shouldDetach;
 };
-
-std::string ToHex(unsigned char* data, uint32_t len) {
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (uint32_t i = 0; i < len; ++i) {
-        ss << std::setw(2) << static_cast<int>(data[i]);
-    }
-    return ss.str();
-}
 
 inline jobject BoxInt(JNIEnv*& env, const jint val) {
     return env->CallStaticObjectMethod(integerClass, integerValueOf, val);
@@ -259,6 +222,47 @@ static void Log(int level, const char* InMessage) {
     env->DeleteLocalRef(jstr);
 }
 
+class SafeQueue {
+private:
+    std::queue<std::function<void()>*>* Queue;
+    std::mutex mutex;
+
+public:
+    SafeQueue() {
+        Queue = new std::queue<std::function<void()>*>();
+    }
+
+    ~SafeQueue() {
+        delete Queue;
+    }
+
+    void push(std::function<void()> val) {
+        std::lock_guard lock(mutex);
+        Queue->push(new std::function(std::move(val)));
+    }
+
+    void execute_until_empty() {
+        std::queue<std::function<void()>*>* swapQueue = new std::queue<std::function<void()>*>();
+        {
+            std::lock_guard lock(mutex);
+            std::swap(*swapQueue, *Queue);
+        }
+        while (!swapQueue->empty()) {
+            if (isShutdown.load()) {
+                delete swapQueue;
+                return;
+            };
+            std::function<void()>* value = std::move(swapQueue->front());
+            (*value)();
+            delete value;
+            swapQueue->pop();
+        }
+        delete swapQueue;
+    }
+};
+
+static SafeQueue globalQueue;
+
 struct ClientData {
     char* copyChars;
     jobject globalCallback;
@@ -299,33 +303,34 @@ static void Login(ClientData* clientData, EOS_Connect_OnLoginCallback callback) 
     if (isShutdown.load()) return;
 
     globalQueue.push([=]() {
-        EOS_Connect_LoginOptions LoginOptions = {};
-        LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
+        EOS_Connect_LoginOptions* LoginOptions = new EOS_Connect_LoginOptions();
+        LoginOptions->ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
 
-        EOS_Connect_Credentials creds = {};
-        creds.ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
-        creds.Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
-        creds.Token = nullptr;
+        EOS_Connect_Credentials* creds = new EOS_Connect_Credentials();
+        creds->ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
+        creds->Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
+        creds->Token = nullptr;
 
-        LoginOptions.Credentials = &creds;
-        EOS_Connect_UserLoginInfo LoginInfo = {};
-        LoginInfo.ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
-        LoginInfo.NsaIdToken = nullptr;
+        LoginOptions->Credentials = creds;
+        EOS_Connect_UserLoginInfo* LoginInfo = new EOS_Connect_UserLoginInfo();
+        LoginInfo->ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
+        LoginInfo->NsaIdToken = nullptr;
 
         {
             ScopedEnv envs;
             JNIEnv* env = envs;
             if (envs.success()) {
                 char* name = getName(env);
-                LoginInfo.DisplayName = name;
+                LoginInfo->DisplayName = name;
                 clientData->nameIfPresent = name;
             } else {
-                LoginInfo.DisplayName = "Mod Player";
+                LoginInfo->DisplayName = "Mod Player";
                 clientData->nameIfPresent = nullptr;
             }
         }
-        LoginOptions.UserLoginInfo = &LoginInfo;
-        EOS_Connect_Login(connectHandle, &LoginOptions, clientData, callback);
+        LoginOptions->UserLoginInfo = LoginInfo;
+        EOS_Connect_Login(connectHandle, LoginOptions, clientData, callback);
+        delete LoginOptions;
     });
 }
 
@@ -696,11 +701,11 @@ static bool tryReceive(JNIEnv*& env) {
         env->DeleteLocalRef(sid);
         env->DeleteLocalRef(arr);
 
-        delete remotePUID;
+        delete[] remotePUID;
     }
 
     env->DeleteLocalRef(localConsumer);
-    delete OutMessage;
+    delete[] OutMessage;
 
     return hasPacket;
 }
@@ -737,15 +742,16 @@ extern "C" {
             ScopedEnv envs;
             if (!envs.success()) return;
             JNIEnv* env = envs;
-            EOS_InitializeOptions EOSSdkOptions = {};
-            EOSSdkOptions.ApiVersion = EOS_INITIALIZE_API_LATEST;
+            EOS_InitializeOptions* EOSSdkOptions = new EOS_InitializeOptions();
+            EOSSdkOptions->ApiVersion = EOS_INITIALIZE_API_LATEST;
 
-            EOSSdkOptions.ProductName = copyname;
-            EOSSdkOptions.ProductVersion = copyver;
+            EOSSdkOptions->ProductName = copyname;
+            EOSSdkOptions->ProductVersion = copyver;
 
-            EOS_EResult InitResult = EOS_Initialize(&EOSSdkOptions);
+            EOS_EResult InitResult = EOS_Initialize(EOSSdkOptions);
             delete copyname;
             delete copyver;
+            delete EOSSdkOptions;
             bool success = false;
             if (InitResult == EOS_EResult::EOS_Success) {
                 EOS_Logging_SetLogLevel(EOS_ELogCategory::EOS_LC_ALL_CATEGORIES, EOS_ELogLevel::EOS_LOG_VeryVerbose);
@@ -840,7 +846,7 @@ extern "C" {
         options.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
 
         const char* tempChars = env->GetStringUTFChars(uniqueID, nullptr);
-        int length = strlen(tempChars);
+        size_t length = strlen(tempChars);
         if (length > EOS_CONNECT_CREATEDEVICEID_DEVICEMODEL_MAX_LENGTH) {
             length = EOS_CONNECT_CREATEDEVICEID_DEVICEMODEL_MAX_LENGTH;
         }
@@ -910,7 +916,7 @@ extern "C" {
                                     env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                                     checkException(env);
                                 }
-                                delete buffer;
+                                delete[] buffer;
                                 env->DeleteGlobalRef(client_data->globalCallback);
                                 delete client_data->copyChars;
                                 if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
