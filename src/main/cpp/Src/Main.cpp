@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <cstring>
+#include <cstdlib>
 
 #include "io_szktas_eos_EOSBinder_EOSNative.h"
 
@@ -303,34 +304,33 @@ static void Login(ClientData* clientData, EOS_Connect_OnLoginCallback callback) 
     if (isShutdown.load()) return;
 
     globalQueue.push([=]() {
-        EOS_Connect_LoginOptions* LoginOptions = new EOS_Connect_LoginOptions();
-        LoginOptions->ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
+        EOS_Connect_LoginOptions LoginOptions = {};
+        LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
 
-        EOS_Connect_Credentials* creds = new EOS_Connect_Credentials();
-        creds->ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
-        creds->Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
-        creds->Token = nullptr;
+        EOS_Connect_Credentials creds = {};
+        creds.ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
+        creds.Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
+        creds.Token = nullptr;
 
-        LoginOptions->Credentials = creds;
-        EOS_Connect_UserLoginInfo* LoginInfo = new EOS_Connect_UserLoginInfo();
-        LoginInfo->ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
-        LoginInfo->NsaIdToken = nullptr;
+        LoginOptions.Credentials = &creds;
+        EOS_Connect_UserLoginInfo LoginInfo = {};
+        LoginInfo.ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
+        LoginInfo.NsaIdToken = nullptr;
 
         {
             ScopedEnv envs;
             JNIEnv* env = envs;
             if (envs.success()) {
                 char* name = getName(env);
-                LoginInfo->DisplayName = name;
+                LoginInfo.DisplayName = name;
                 clientData->nameIfPresent = name;
             } else {
-                LoginInfo->DisplayName = "Mod Player";
+                LoginInfo.DisplayName = "Mod Player";
                 clientData->nameIfPresent = nullptr;
             }
         }
-        LoginOptions->UserLoginInfo = LoginInfo;
-        EOS_Connect_Login(connectHandle, LoginOptions, clientData, callback);
-        delete LoginOptions;
+        LoginOptions.UserLoginInfo = &LoginInfo;
+        EOS_Connect_Login(connectHandle, &LoginOptions, clientData, callback);
     });
 }
 
