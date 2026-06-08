@@ -150,21 +150,21 @@ public class EOSNative {
                 }
             }
             LOGGER.info("Init ongoing");
-            SetLogging((level, s) -> {
-                if (level < 300) {
-                    LOGGER.error(EOSMarker, s);
-                } else if (level < 400) {
-                    LOGGER.warn(EOSMarker, s);
-                } else if (level < 500) {
-                    LOGGER.info(EOSMarker, s);
-                } else {
-                    LOGGER.debug(EOSMarker, s);
-                }
-            });
             init(
                     () -> {
                         IsEnabled = true;
                         LOGGER.info("Enable, setting log");
+                        SetLogging((level, s) -> {
+                            if (level < 300) {
+                                LOGGER.error(EOSMarker, s);
+                            } else if (level < 400) {
+                                LOGGER.warn(EOSMarker, s);
+                            } else if (level < 500) {
+                                LOGGER.info(EOSMarker, s);
+                            } else {
+                                LOGGER.debug(EOSMarker, s);
+                            }
+                        });
                     },
                     (reason) -> {
                         LOGGER.error("Error in EOS Service Initialization: {}", reason);
@@ -341,13 +341,15 @@ public class EOSNative {
     public static native void subscribeCloseConnectionRequestHandler(TriConsumer<String, String, String> consumer);
     public static native boolean subscribeCloseConnectionRequest(String puid, String socketname);
 
-    public static native void connectOrAccept(String localPUID, String remotePUID, String SocketID, Consumer<String> ret);
+    public static native String connectOrAccept(String localPUID, String remotePUID, String SocketID);
 
-    public static native void close(String localPUID, String remotePUID, String SocketID, Consumer<String> ret);
+    public static native String close(String localPUID, String remotePUID, String SocketID);
 
     public static native String send(String localPUID, String remotePUID, String socketId, byte channel, byte[] bytes);
 
     public static native void registerReceiveCallbackFor(String localPUID, PacketConsumer resultConsumer);
 
     public static native void shutdownNow();
+
+    public static native void setGenericLog(BiConsumer<String, String> log);
 }

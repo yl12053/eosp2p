@@ -116,6 +116,7 @@ public class FMLCommonSetupHandler {
                     @Nullable Set<PacketHandler> handlers = NetworkUtil.DATA_CALLBACKS.get(key);
                     if (handlers != null) {
                         for (PacketHandler handler: handlers) {
+                            LOGGER.debug("Sent");
                             handler.accept(data);
                         }
                     }

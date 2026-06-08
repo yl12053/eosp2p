@@ -2,7 +2,6 @@
 
 #include <condition_variable>
 #include <cstring>
-#include <cstdlib>
 
 #include "io_szktas_eos_EOSBinder_EOSNative.h"
 
@@ -12,7 +11,6 @@
 #include <eos_sdk.h>
 #include <eos_connect.h>
 #include <eos_p2p.h>
-#include <queue>
 
 #ifdef __APPLE__
 #define FMT_HEADER_ONLY
@@ -98,9 +96,6 @@ static std::mutex initMutex;
 static std::condition_variable condIsPlatformArgPresent;
 static PlatformArg* platformArgPointer = nullptr;
 
-std::atomic isShutdown(false);
-
-
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__APPLE__) || defined(__linux__)
@@ -115,6 +110,8 @@ static void SetThreadToHighPriority() {
     setpriority(PRIO_PROCESS, 0, -5);
 #endif
 }
+
+std::atomic isShutdown(false);
 
 class ScopedEnv {
 public:
@@ -144,6 +141,15 @@ private:
     bool shouldDetach;
 };
 
+std::string ToHex(unsigned char* data, uint32_t len) {
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (uint32_t i = 0; i < len; ++i) {
+        ss << std::setw(2) << static_cast<int>(data[i]);
+    }
+    return ss.str();
+}
+
 inline jobject BoxInt(JNIEnv*& env, const jint val) {
     return env->CallStaticObjectMethod(integerClass, integerValueOf, val);
 }
@@ -154,7 +160,7 @@ inline jobject BoxByte(JNIEnv*& env, const jbyte val) {
 
 inline char* copyString(const char* src) {
     size_t len = strlen(src) + 1;
-    char* newstr = new char[sizeof(char) * len];
+    char* newstr = static_cast<char*>(malloc(sizeof(char) * len));
     strcpy(newstr, src);
     return newstr;
 }
@@ -223,47 +229,6 @@ static void Log(int level, const char* InMessage) {
     env->DeleteLocalRef(jstr);
 }
 
-class SafeQueue {
-private:
-    std::queue<std::function<void()>*>* Queue;
-    std::mutex mutex;
-
-public:
-    SafeQueue() {
-        Queue = new std::queue<std::function<void()>*>();
-    }
-
-    ~SafeQueue() {
-        delete Queue;
-    }
-
-    void push(std::function<void()> val) {
-        std::lock_guard lock(mutex);
-        Queue->push(new std::function(std::move(val)));
-    }
-
-    void execute_until_empty() {
-        std::queue<std::function<void()>*>* swapQueue = new std::queue<std::function<void()>*>();
-        {
-            std::lock_guard lock(mutex);
-            std::swap(*swapQueue, *Queue);
-        }
-        while (!swapQueue->empty()) {
-            if (isShutdown.load()) {
-                delete swapQueue;
-                return;
-            };
-            std::function<void()>* value = std::move(swapQueue->front());
-            (*value)();
-            delete value;
-            swapQueue->pop();
-        }
-        delete swapQueue;
-    }
-};
-
-static SafeQueue globalQueue;
-
 struct ClientData {
     char* copyChars;
     jobject globalCallback;
@@ -274,7 +239,7 @@ struct ClientData {
 inline char* makeCharFromJString(JNIEnv*& env, jstring& str) {
     const char* srcChr = env->GetStringUTFChars(str, nullptr);
     size_t length = strlen(srcChr);
-    char* newChar = new char[sizeof(char) * (length + 1)];
+    char* newChar = static_cast<char*>(malloc(sizeof(char) * (length + 1)));
     strcpy(newChar, srcChr);
     env->ReleaseStringUTFChars(str, srcChr);
     return newChar;
@@ -286,7 +251,7 @@ inline char* getName(JNIEnv*& env) {
     {
         std::lock_guard lock(supplierMutex);
         if (globalNameSupplier == nullptr) {
-            char* ret = new char[sizeof(char) * 11];
+            char* ret = static_cast<char*>(malloc(sizeof(char) * 11));
             strcpy(ret, "Mod Player");
             return ret;
         }
@@ -302,36 +267,34 @@ inline char* getName(JNIEnv*& env) {
 
 static void Login(ClientData* clientData, EOS_Connect_OnLoginCallback callback) {
     if (isShutdown.load()) return;
+    EOS_Connect_LoginOptions LoginOptions = {};
+    LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
 
-    globalQueue.push([=]() {
-        EOS_Connect_LoginOptions LoginOptions = {};
-        LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
+    EOS_Connect_Credentials creds = {};
+    creds.ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
+    creds.Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
+    creds.Token = nullptr;
 
-        EOS_Connect_Credentials creds = {};
-        creds.ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
-        creds.Type = EOS_EExternalCredentialType::EOS_ECT_DEVICEID_ACCESS_TOKEN;
-        creds.Token = nullptr;
+    LoginOptions.Credentials = &creds;
+    EOS_Connect_UserLoginInfo LoginInfo = {};
+    LoginInfo.ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
+    LoginInfo.NsaIdToken = nullptr;
 
-        LoginOptions.Credentials = &creds;
-        EOS_Connect_UserLoginInfo LoginInfo = {};
-        LoginInfo.ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
-        LoginInfo.NsaIdToken = nullptr;
-
-        {
-            ScopedEnv envs;
-            JNIEnv* env = envs;
-            if (envs.success()) {
-                char* name = getName(env);
-                LoginInfo.DisplayName = name;
-                clientData->nameIfPresent = name;
-            } else {
-                LoginInfo.DisplayName = "Mod Player";
-                clientData->nameIfPresent = nullptr;
-            }
+    {
+        ScopedEnv envs;
+        JNIEnv* env = envs;
+        if (envs.success()) {
+            char* name = getName(env);
+            LoginInfo.DisplayName = name;
+            clientData->nameIfPresent = name;
+        } else {
+            LoginInfo.DisplayName = "Mod Player";
+            clientData->nameIfPresent = nullptr;
         }
-        LoginOptions.UserLoginInfo = &LoginInfo;
-        EOS_Connect_Login(connectHandle, &LoginOptions, clientData, callback);
-    });
+    }
+    LoginOptions.UserLoginInfo = &LoginInfo;
+
+    EOS_Connect_Login(connectHandle, &LoginOptions, clientData, callback);
 }
 
 static int CreatePlatform(double timeout, const char* productID, const char* clientcredid, const char* clientsecret, const char* sandboxid, const char* deploymentid) {
@@ -392,10 +355,7 @@ static int CreatePlatform(double timeout, const char* productID, const char* cli
         Login(datas, [](const EOS_Connect_LoginCallbackInfo* data) {
             ClientData* datas = static_cast<ClientData *>(data->ClientData);
             if (datas->nameIfPresent != nullptr) {
-                delete datas->nameIfPresent;
-            }
-            if (data->ResultCode != EOS_EResult::EOS_Success) {
-                Log(0, fmtns::format("ERROR WHEN REFRESHING TOKEN: {}", EOS_EResult_ToString(data->ResultCode)).c_str());
+                free(datas->nameIfPresent);
             }
             delete datas;
         });
@@ -507,14 +467,14 @@ struct Callback {
             triconsumer = env->NewLocalRef(globalConsumer);
             trimethod = globalMethodID;
         }
-        std::vector<char> localpid(EOS_PRODUCTUSERID_MAX_LENGTH + 1);
-        std::vector<char> remotepid(EOS_PRODUCTUSERID_MAX_LENGTH + 1);
-        int32_t buffer_size = EOS_PRODUCTUSERID_MAX_LENGTH + 1;
-        EOS_ProductUserId_ToString(Data->LocalUserId, localpid.data(), &buffer_size);
-        EOS_ProductUserId_ToString(Data->RemoteUserId, remotepid.data(), &buffer_size);
+        char localpid[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        char remotepid[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        int32_t buffer_size = sizeof(localpid);
+        EOS_ProductUserId_ToString(Data->LocalUserId, localpid, &buffer_size);
+        EOS_ProductUserId_ToString(Data->RemoteUserId, remotepid, &buffer_size);
 
-        jstring local = env->NewStringUTF(localpid.data());
-        jstring remote = env->NewStringUTF(remotepid.data());
+        jstring local = env->NewStringUTF(localpid);
+        jstring remote = env->NewStringUTF(remotepid);
         jstring socket = Data->SocketId == nullptr ? nullptr : env->NewStringUTF(Data->SocketId->SocketName);
 
         env->CallVoidMethod(triconsumer, trimethod, local, remote, socket);
@@ -542,8 +502,8 @@ static bool SubscribeP2PGenericRequest(JNIEnv* env, jstring puidj, jstring socke
     id = func(p2pHandle, &Options, nullptr, callback);
 
     delete Options.SocketId;
-    delete puidstr;
-    if (name != nullptr) delete name;
+    free(puidstr);
+    if (name != nullptr) free(name);
 
     return id != EOS_INVALID_NOTIFICATIONID;
 }
@@ -593,15 +553,15 @@ static jstring doConnectionAction(JNIEnv* env, jstring localPUIDj, jstring remot
 
     EOS_ProductUserId localPUID = EOS_ProductUserId_FromString(localPUIDs);
     EOS_ProductUserId remotePUID = EOS_ProductUserId_FromString(remotePUIDs);
-    delete localPUIDs;
-    delete remotePUIDs;
+    free(localPUIDs);
+    free(remotePUIDs);
 
     if (EOS_ProductUserId_IsValid(remotePUID) == EOS_FALSE) {
-        if (socketIDs != nullptr) delete socketIDs;
+        if (socketIDs != nullptr) free(socketIDs);
         return env->NewStringUTF("--remote_not_valid");
     }
     if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
-        if (socketIDs != nullptr) delete socketIDs;
+        if (socketIDs != nullptr) free(socketIDs);
         return env->NewStringUTF("--local_not_valid");
     }
 
@@ -615,11 +575,11 @@ static jstring doConnectionAction(JNIEnv* env, jstring localPUIDj, jstring remot
     EOS_EResult Result = func(p2pHandle, &Options);
     if (Result == EOS_EResult::EOS_Success) {
         if (Options.SocketId != nullptr) delete Options.SocketId;
-        if (socketIDs != nullptr) delete socketIDs;
+        if (socketIDs != nullptr) free(socketIDs);
         return nullptr;
     }
     if (Options.SocketId != nullptr) delete Options.SocketId;
-    if (socketIDs != nullptr) delete socketIDs;
+    if (socketIDs != nullptr) free(socketIDs);
     return env->NewStringUTF(EOS_EResult_ToString(Result));
 }
 
@@ -679,14 +639,14 @@ static bool tryReceive(JNIEnv*& env) {
     uint8_t OutChannel = 0;
 
     uint32_t BytesWritten = 0;
-    jbyte* OutMessage = new jbyte[nextSize];
+    jbyte* OutMessage = static_cast<jbyte*>(malloc(nextSize));
     EOS_EResult ReceivePacketResult = EOS_P2P_ReceivePacket(p2pHandle, &ReceiveOptions, &OutRemoteId, &OutSocketId, &OutChannel, OutMessage, &BytesWritten);
 
     bool hasPacket = ReceivePacketResult == EOS_EResult::EOS_Success;
 
     if (hasPacket) {
-        char* remotePUID = new char[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
-        int32_t size = EOS_PRODUCTUSERID_MAX_LENGTH + 1;
+        char remotePUID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        int32_t size = sizeof(remotePUID);
         EOS_ProductUserId_ToString(OutRemoteId, remotePUID, &size);
         jstring remotePUIDj = env->NewStringUTF(remotePUID);
         jstring sid = OutSocketId.SocketName == nullptr ? nullptr : env->NewStringUTF(OutSocketId.SocketName);
@@ -700,12 +660,10 @@ static bool tryReceive(JNIEnv*& env) {
         env->DeleteLocalRef(remotePUIDj);
         env->DeleteLocalRef(sid);
         env->DeleteLocalRef(arr);
-
-        delete[] remotePUID;
     }
 
     env->DeleteLocalRef(localConsumer);
-    delete[] OutMessage;
+    free(OutMessage);
 
     return hasPacket;
 }
@@ -742,16 +700,15 @@ extern "C" {
             ScopedEnv envs;
             if (!envs.success()) return;
             JNIEnv* env = envs;
-            EOS_InitializeOptions* EOSSdkOptions = new EOS_InitializeOptions();
-            EOSSdkOptions->ApiVersion = EOS_INITIALIZE_API_LATEST;
+            EOS_InitializeOptions EOSSdkOptions = {};
+            EOSSdkOptions.ApiVersion = EOS_INITIALIZE_API_LATEST;
 
-            EOSSdkOptions->ProductName = copyname;
-            EOSSdkOptions->ProductVersion = copyver;
+            EOSSdkOptions.ProductName = copyname;
+            EOSSdkOptions.ProductVersion = copyver;
 
-            EOS_EResult InitResult = EOS_Initialize(EOSSdkOptions);
-            delete copyname;
-            delete copyver;
-            delete EOSSdkOptions;
+            EOS_EResult InitResult = EOS_Initialize(&EOSSdkOptions);
+            free(copyname);
+            free(copyver);
             bool success = false;
             if (InitResult == EOS_EResult::EOS_Success) {
                 EOS_Logging_SetLogLevel(EOS_ELogCategory::EOS_LC_ALL_CATEGORIES, EOS_ELogLevel::EOS_LOG_VeryVerbose);
@@ -779,7 +736,7 @@ extern "C" {
                 checkException(env);
                 env->DeleteLocalRef(retv);
                 env->DeleteGlobalRef(platformArgPointer->callback);
-                delete platformArgPointer;
+                free(platformArgPointer);
                 return;
             }
             int ret = CreatePlatform(
@@ -795,11 +752,11 @@ extern "C" {
             checkException(env);
             env->DeleteGlobalRef(platformArgPointer->callback);
             env->DeleteLocalRef(retv);
-            delete platformArgPointer->productID;
-            delete platformArgPointer->clientcredid;
-            delete platformArgPointer->clientsecret;
-            delete platformArgPointer->sandboxid;
-            delete platformArgPointer->deploymentid;
+            free(platformArgPointer->productID);
+            free(platformArgPointer->clientcredid);
+            free(platformArgPointer->clientsecret);
+            free(platformArgPointer->sandboxid);
+            free(platformArgPointer->deploymentid);
             delete platformArgPointer;
             platformArgPointer = nullptr;
             if (ret != 0) return;
@@ -809,9 +766,8 @@ extern "C" {
                     std::lock_guard lock(p2pOptMutex);
                     EOS_Platform_Tick(platformHandle);
                 }
-                globalQueue.execute_until_empty();
                 while (!isShutdown.load() && tryReceive(env));
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
             }
         });
 
@@ -846,18 +802,18 @@ extern "C" {
         options.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
 
         const char* tempChars = env->GetStringUTFChars(uniqueID, nullptr);
-        size_t length = strlen(tempChars);
+        int length = strlen(tempChars);
         if (length > EOS_CONNECT_CREATEDEVICEID_DEVICEMODEL_MAX_LENGTH) {
             length = EOS_CONNECT_CREATEDEVICEID_DEVICEMODEL_MAX_LENGTH;
         }
         length++;
-        char* copyChars = new char[sizeof(char) * length];
+        char* copyChars = static_cast<char*>(malloc(sizeof(char) * length));
         snprintf(copyChars, length, "%s", tempChars);
         env->ReleaseStringUTFChars(uniqueID, tempChars);
 
         options.DeviceModel = copyChars;
 
-        ClientData* client_data = new ClientData();
+        ClientData* client_data = static_cast<ClientData*>(malloc(sizeof(ClientData)));
         client_data->copyChars = copyChars;
         client_data->globalCallback = globalCallback;
         client_data->methodID = callbackmethod;
@@ -886,9 +842,9 @@ extern "C" {
                             checkException(env);
                         }
                         env->DeleteGlobalRef(client_data->globalCallback);
-                        delete client_data->copyChars;
-                        if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
-                        delete client_data;
+                        free(client_data->copyChars);
+                        if (client_data->nameIfPresent != nullptr) free(client_data->nameIfPresent);
+                        free(client_data);
                         return;
                     }
                     if (data->ResultCode == EOS_EResult::EOS_InvalidUser) {
@@ -902,8 +858,8 @@ extern "C" {
                             ClientData* client_data = static_cast<ClientData*>(data->ClientData);
 
                             if (data->ResultCode == EOS_EResult::EOS_Success) {
-                                char* buffer = new char[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
-                                int32_t buffer_size = EOS_PRODUCTUSERID_MAX_LENGTH + 1;
+                                char buffer[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+                                int32_t buffer_size = sizeof(buffer);
                                 EOS_EResult result = EOS_ProductUserId_ToString(data->LocalUserId, buffer, &buffer_size);
                                 if (result == EOS_EResult::EOS_Success) {
                                     jstring str = env->NewStringUTF(buffer);
@@ -916,11 +872,10 @@ extern "C" {
                                     env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                                     checkException(env);
                                 }
-                                delete[] buffer;
                                 env->DeleteGlobalRef(client_data->globalCallback);
-                                delete client_data->copyChars;
-                                if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
-                                delete client_data;
+                                free(client_data->copyChars);
+                                if (client_data->nameIfPresent != nullptr) free(client_data->nameIfPresent);
+                                free(client_data);
                                 return;
                             }
                             if (EOS_EResult_IsOperationComplete(data->ResultCode) == EOS_FALSE) {
@@ -929,9 +884,9 @@ extern "C" {
                             env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                             checkException(env);
                             env->DeleteGlobalRef(client_data->globalCallback);
-                            delete client_data->copyChars;
-                            if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
-                            delete client_data;
+                            free(client_data->copyChars);
+                            if (client_data->nameIfPresent != nullptr) free(client_data->nameIfPresent);
+                            free(client_data);
                         });
                         return;
                     }
@@ -941,9 +896,9 @@ extern "C" {
                     env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
                     checkException(env);
                     env->DeleteGlobalRef(client_data->globalCallback);
-                    delete client_data->copyChars;
-                    if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
-                    delete client_data;
+                    free(client_data->copyChars);
+                    if (client_data->nameIfPresent != nullptr) free(client_data->nameIfPresent);
+                    free(client_data);
                 });
                 return;
             }
@@ -955,9 +910,9 @@ extern "C" {
             env->CallVoidMethod(client_data->globalCallback, client_data->methodID, nullptr);
             checkException(env);
             env->DeleteGlobalRef(client_data->globalCallback);
-            delete client_data->copyChars;
-            if (client_data->nameIfPresent != nullptr) delete client_data->nameIfPresent;
-            delete client_data;
+            free(client_data->copyChars);
+            if (client_data->nameIfPresent != nullptr) free(client_data->nameIfPresent);
+            free(client_data);
         });
     };
 
@@ -1007,12 +962,10 @@ extern "C" {
             target = EOS_ENetworkStatus::EOS_NS_Disabled;
         }
 
-        globalQueue.push([=]() {
-            EOS_ENetworkStatus old = EOS_Platform_GetNetworkStatus(platformHandle);
-            if (old != target) {
-                EOS_Platform_SetNetworkStatus(platformHandle, target);
-            }
-        });
+        EOS_ENetworkStatus old = EOS_Platform_GetNetworkStatus(platformHandle);
+        if (old != target) {
+            EOS_Platform_SetNetworkStatus(platformHandle, target);
+        }
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeIncomingConnectionRequestHandler(JNIEnv* env, jclass clazz, jobject triconsumer) {
@@ -1075,66 +1028,14 @@ extern "C" {
         );
     };
 
-    JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_connectOrAccept(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj, jobject consumer) {
-        static constexpr auto sig = createMethodDesc<1>();
-        jclass clz = env->GetObjectClass(consumer);
-        jmethodID recv = env->GetMethodID(clz, "accept", sig.data);
-
-        if (isShutdown.load()) {
-            jstring ret = env->NewStringUTF("--shutdown");
-            env->CallVoidMethod(consumer, recv, ret);
-            env->DeleteLocalRef(ret);
-            return;
-        };
-
-        jstring localPUIDc = static_cast<jstring>(env->NewGlobalRef(localPUIDj));
-        jstring globalPUIDc = static_cast<jstring>(env->NewGlobalRef(remotePUIDj));
-        jstring socketIDc = static_cast<jstring>(env->NewGlobalRef(SocketIDj));
-        jobject consumerc = env->NewGlobalRef(consumer);
-
-        globalQueue.push([=]() {
-            ScopedEnv envs;
-            if (!envs.success()) return;
-            JNIEnv* env = envs;
-
-            jstring ret = doConnectionAction(env, localPUIDc, globalPUIDc, socketIDc, EOS_P2P_ACCEPTCONNECTION_API_LATEST, EOS_P2P_AcceptConnection);
-            env->CallVoidMethod(consumerc, recv, ret);
-            env->DeleteGlobalRef(localPUIDc);
-            env->DeleteGlobalRef(globalPUIDc);
-            env->DeleteGlobalRef(socketIDc);
-            env->DeleteGlobalRef(consumerc);
-        });
+    JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_connectOrAccept(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
+        if (isShutdown.load()) return env->NewStringUTF("--shutdown");
+        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_ACCEPTCONNECTION_API_LATEST, EOS_P2P_AcceptConnection);
     };
 
-    JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_close(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj, jobject consumer) {
-        static constexpr auto sig = createMethodDesc<1>();
-        jclass clz = env->GetObjectClass(consumer);
-        jmethodID recv = env->GetMethodID(clz, "accept", sig.data);
-
-        if (isShutdown.load()) {
-            jstring ret = env->NewStringUTF("--shutdown");
-            env->CallVoidMethod(consumer, recv, ret);
-            env->DeleteLocalRef(ret);
-            return;
-        };
-
-        jstring localPUIDc = static_cast<jstring>(env->NewGlobalRef(localPUIDj));
-        jstring globalPUIDc = static_cast<jstring>(env->NewGlobalRef(remotePUIDj));
-        jstring socketIDc = static_cast<jstring>(env->NewGlobalRef(SocketIDj));
-        jobject consumerc = env->NewGlobalRef(consumer);
-
-        globalQueue.push([=]() {
-            ScopedEnv envs;
-            if (!envs.success()) return;
-            JNIEnv* env = envs;
-
-            jstring ret = doConnectionAction(env, localPUIDc, globalPUIDc, socketIDc, EOS_P2P_CLOSECONNECTION_API_LATEST, EOS_P2P_CloseConnection);
-            env->CallVoidMethod(consumerc, recv, ret);
-            env->DeleteGlobalRef(localPUIDc);
-            env->DeleteGlobalRef(globalPUIDc);
-            env->DeleteGlobalRef(socketIDc);
-            env->DeleteGlobalRef(consumerc);
-        });
+    JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_close(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
+        if (isShutdown.load()) return env->NewStringUTF("--shutdown");
+        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_CLOSECONNECTION_API_LATEST, EOS_P2P_CloseConnection);
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_send(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring socketIDj, jbyte channel, jbyteArray dataj) {
@@ -1145,15 +1046,15 @@ extern "C" {
 
         EOS_ProductUserId localPUID = EOS_ProductUserId_FromString(localPUIDs);
         EOS_ProductUserId remotePUID = EOS_ProductUserId_FromString(remotePUIDs);
-        delete localPUIDs;
-        delete remotePUIDs;
+        free(localPUIDs);
+        free(remotePUIDs);
 
         if (EOS_ProductUserId_IsValid(remotePUID) == EOS_FALSE) {
-            if (socketIDs != nullptr) delete socketIDs;
+            if (socketIDs != nullptr) free(socketIDs);
             return env->NewStringUTF("--remote_not_valid");
         }
         if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
-            if (socketIDs != nullptr) delete socketIDs;
+            if (socketIDs != nullptr) free(socketIDs);
             return env->NewStringUTF("--local_not_valid");
         }
 
@@ -1169,7 +1070,7 @@ extern "C" {
         jbyte* bytes = env->GetByteArrayElements(dataj, nullptr);
         uint32_t len = static_cast<uint32_t>(env->GetArrayLength(dataj)) * sizeof(jbyte);
 
-        EOS_EResult SendPacketResult = EOS_EResult::EOS_Success;
+        EOS_EResult SendPacketResult;
 
         int j = 0;
 
@@ -1190,7 +1091,7 @@ extern "C" {
 
         env->ReleaseByteArrayElements(dataj, bytes, JNI_ABORT);
         if (Options.SocketId != nullptr) delete Options.SocketId;
-        if (socketIDs != nullptr) delete socketIDs;
+        if (socketIDs != nullptr) free(socketIDs);
 
         if (SendPacketResult == EOS_EResult::EOS_Success) return nullptr;
 
@@ -1198,14 +1099,13 @@ extern "C" {
         return env->NewStringUTF(errorCode);
     };
 
-
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_registerReceiveCallbackFor(JNIEnv* env, jclass clazz, jstring localPUIDj, jobject consumer) {
         if (isShutdown.load()) return;
         std::lock_guard lock(receiveMutex);
         if (globalReceiveConsumer != nullptr) {
             env->DeleteGlobalRef(globalReceiveConsumer);
         }
-        if (globalReceivePUID != nullptr) delete globalReceivePUID;
+        if (globalReceivePUID != nullptr) free(globalReceivePUID);
 
         globalReceiveConsumer = env->NewGlobalRef(consumer);
         jclass clz = env->GetObjectClass(consumer);
@@ -1216,7 +1116,7 @@ extern "C" {
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_shutdownNow(JNIEnv* env, jclass clazz) {
         bool expected = false;
         if (isShutdown.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-            globalQueue.push(EOS_Shutdown);
+            EOS_Shutdown();
         }
     };
 }

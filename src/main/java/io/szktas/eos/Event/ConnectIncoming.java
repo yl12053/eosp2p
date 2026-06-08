@@ -16,4 +16,8 @@ public class ConnectIncoming extends Event {
     public final String SelfPUID;
     public final String RemotePUID;
     @Nullable public final String SocketName;
+
+    public String accept() {
+        return connectOrAccept(SelfPUID, RemotePUID, SocketName);
+    }
 }
