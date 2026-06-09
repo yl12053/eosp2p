@@ -11,6 +11,7 @@
 #include <eos_sdk.h>
 #include <eos_connect.h>
 #include <eos_p2p.h>
+#include <shared_mutex>
 
 #ifdef __APPLE__
 #define FMT_HEADER_ONLY
@@ -30,6 +31,23 @@ namespace fmtns = std;
 #include <mutex>
 #include <string>
 #include <thread>
+
+#include "ska/flat_hash_map.hpp"
+
+extern "C" {
+#include "kcp/ikcp.h"
+}
+
+#define FNV_OFFSET_BASIS 0xcbf29ce484222325ull
+#define FNV_PRIME 0x100000001b3ull
+inline uint64_t FNV_1A(uint64_t& hash, const char* data, size_t length) {
+    for (size_t i = 0; i < length; i++) {
+        hash ^= static_cast<unsigned char>(*(data + i) & 0xff);
+        hash *= FNV_PRIME;
+    }
+
+    return hash;
+}
 
 static JavaVM* globalJVM = nullptr;
 
@@ -92,6 +110,7 @@ static EOS_NotificationId ConnectionInterruptedNotificationId = 0;
 static EOS_NotificationId ConnectionClosedNotificationId = 0;
 
 static std::thread* mainLoopThread = nullptr;
+static std::thread* ikcpthread = nullptr;
 static std::mutex initMutex;
 static std::condition_variable condIsPlatformArgPresent;
 static PlatformArg* platformArgPointer = nullptr;
@@ -249,7 +268,7 @@ inline char* getName(JNIEnv*& env) {
         nameSupplier = env->NewLocalRef(globalNameSupplier);
         id = globalSupplierMethod;
     }
-    jstring strj = static_cast<jstring>(env->CallObjectMethod(nameSupplier, id));
+    jstring strj = std::launder(static_cast<jstring>(env->CallObjectMethod(nameSupplier, id)));
     checkException(env);
     char* rstr = makeCharFromJString(env, strj);
     env->DeleteLocalRef(nameSupplier);
@@ -344,7 +363,7 @@ static int CreatePlatform(double timeout, const char* productID, const char* cli
         if (isShutdown.load()) return;
         ClientData* datas = new ClientData();
         Login(datas, [](const EOS_Connect_LoginCallbackInfo* data) {
-            ClientData* datas = static_cast<ClientData *>(data->ClientData);
+            ClientData* datas = std::launder(static_cast<ClientData *>(data->ClientData));
             if (datas->nameIfPresent != nullptr) {
                 delete[] datas->nameIfPresent;
             }
@@ -665,6 +684,255 @@ static bool tryReceive(JNIEnv*& env) {
     return hasPacket;
 }
 
+constexpr uint64_t MAGIC_NUM_1 = 0x17b7cd11f9a12c6ull;
+constexpr uint64_t MAGIC_NUM_2 = 0x71002c434b0af32dull;
+
+struct MASK {
+    std::array<char, 8> data;
+    constexpr MASK(uint64_t val) : data {
+        static_cast<char>(val >> 0),
+        static_cast<char>(val >> 8),
+        static_cast<char>(val >> 16),
+        static_cast<char>(val >> 24),
+        static_cast<char>(val >> 32),
+        static_cast<char>(val >> 40),
+        static_cast<char>(val >> 48),
+        static_cast<char>(val >> 56)
+    } {}
+};
+
+constexpr auto MAGIC_1 = MASK(MAGIC_NUM_1).data;
+constexpr auto MAGIC_2 = MASK(MAGIC_NUM_2).data;
+
+inline uint64_t CalculateHash1(char* localPUID, char* remotePUID, char* socketID, char channel) {
+    uint64_t hash = FNV_OFFSET_BASIS;
+
+    FNV_1A(hash, localPUID, strlen(localPUID));
+    FNV_1A(hash, remotePUID, strlen(remotePUID));
+    FNV_1A(hash, socketID, strlen(socketID));
+    FNV_1A(hash, &channel, 1);
+    FNV_1A(hash, MAGIC_1.data(), 8);
+
+    return hash;
+}
+
+inline uint64_t CalculateHash2(char* localPUID, char* remotePUID, char* socketID, char channel) {
+    uint64_t hash = FNV_OFFSET_BASIS;
+
+    FNV_1A(hash, MAGIC_2.data(), 8);
+    FNV_1A(hash, &channel, 1);
+    FNV_1A(hash, socketID, strlen(socketID));
+    FNV_1A(hash, remotePUID, strlen(remotePUID));
+    FNV_1A(hash, localPUID, strlen(localPUID));
+
+    return hash;
+}
+
+struct Fingerprint {
+    uint64_t h1;
+    uint64_t h2;
+    bool operator==(const Fingerprint& o) const {
+        return h1 == o.h1 && h2 == o.h2;
+    }
+};
+
+struct FHash {
+    size_t operator()(const Fingerprint& f) const {
+        return f.h1 ^ f.h2;
+    }
+};
+
+struct IKCPData {
+    char* localPUID;
+    char* remotePUID;
+    char* socketID;
+    char channel;
+
+    std::shared_ptr<std::mutex> mutex;
+};
+
+std::shared_mutex lock_ikcp;
+ska::flat_hash_map<Fingerprint, ikcpcb*, FHash> IKCPs;
+
+#define IKCP_INTERVAL 10
+
+static int sendIKCPData(const char* buf, int len, ikcpcb *kcp, void* user) {
+    IKCPData* data = std::launder(static_cast<IKCPData*>(user));
+    EOS_ProductUserId localPUID = EOS_ProductUserId_FromString(data->localPUID);
+    EOS_ProductUserId remotePUID = EOS_ProductUserId_FromString(data->remotePUID);
+
+    EOS_P2P_SendPacketOptions Options = {};
+    Options.ApiVersion = EOS_P2P_SENDPACKET_API_LATEST;
+    Options.LocalUserId = localPUID;
+    Options.RemoteUserId = remotePUID;
+    Options.SocketId = MakeSocketID(data->socketID);
+    Options.bAllowDelayedDelivery = EOS_TRUE;
+    Options.Channel = static_cast<uint8_t>(data->channel);
+    Options.Reliability = EOS_EPacketReliability::EOS_PR_UnreliableUnordered;
+    Options.bDisableAutoAcceptConnection = EOS_TRUE;
+    Options.DataLengthBytes = len;
+    Options.Data = buf;
+
+    EOS_EResult result;
+
+    {
+        std::lock_guard lock(p2pOptMutex);
+        result = EOS_P2P_SendPacket(p2pHandle, &Options);
+    }
+
+    delete Options.SocketId;
+
+    if (result != EOS_EResult::EOS_Success) {
+        Log(0, fmtns::format("Send packet not success: {}",  EOS_EResult_ToString(result)).c_str());
+        return -1;
+    }
+    return 0;
+}
+
+bool tryReceiveFromEOS() {
+    if (isShutdown.load()) return false;
+    EOS_ProductUserId localPUID;
+    char* localPUIDs = new char[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+    {
+        std::lock_guard lock(receiveMutex);
+        if (globalReceivePUID == nullptr) return false;
+        localPUID = EOS_ProductUserId_FromString(globalReceivePUID);
+        strcpy(localPUIDs, globalReceivePUID);
+    }
+
+    if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
+        return false;
+    }
+
+    EOS_P2P_GetNextReceivedPacketSizeOptions SizeOpt = {};
+    SizeOpt.ApiVersion = EOS_P2P_GETNEXTRECEIVEDPACKETSIZE_API_LATEST;
+    SizeOpt.LocalUserId = localPUID;
+    SizeOpt.RequestedChannel = nullptr;
+
+    uint32_t nextSize;
+
+    EOS_EResult SizeRet;
+    {
+        std::lock_guard lock(p2pOptMutex);
+        SizeRet = EOS_P2P_GetNextReceivedPacketSize(p2pHandle, &SizeOpt, &nextSize);
+    }
+
+    if (SizeRet != EOS_EResult::EOS_Success) {
+        return false;
+    }
+
+    EOS_P2P_ReceivePacketOptions ReceiveOptions = {};
+    ReceiveOptions.ApiVersion = EOS_P2P_RECEIVEPACKET_API_LATEST;
+    ReceiveOptions.LocalUserId = localPUID;
+    ReceiveOptions.MaxDataSizeBytes = nextSize;
+
+    ReceiveOptions.RequestedChannel = nullptr;
+
+    EOS_ProductUserId OutRemoteId = nullptr;
+    EOS_P2P_SocketId OutSocketId = EOS_P2P_SocketId();
+    uint8_t OutChannel = 0;
+
+    uint32_t BytesWritten = 0;
+    char* OutMessage = new char[nextSize];
+
+    EOS_EResult ReceivePacketResult;
+
+    {
+        std::lock_guard lock(p2pOptMutex);
+        ReceivePacketResult = EOS_P2P_ReceivePacket(p2pHandle, &ReceiveOptions, &OutRemoteId, &OutSocketId, &OutChannel, OutMessage, &BytesWritten);
+    }
+
+    if (ReceivePacketResult == EOS_EResult::EOS_Success) {
+        char remotePUID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        int32_t size = sizeof(remotePUID);
+        EOS_ProductUserId_ToString(OutRemoteId, remotePUID, &size);
+
+        uint64_t hash1 = CalculateHash1(localPUIDs, remotePUID, OutSocketId.SocketName, OutChannel);
+        uint64_t hash2 = CalculateHash2(localPUIDs, remotePUID, OutSocketId.SocketName, OutChannel);
+        delete[] localPUIDs;
+        Fingerprint fprint = { hash1, hash2 };
+        {
+            std::shared_lock lock(lock_ikcp);
+            auto it = IKCPs.find(fprint);
+            if (it != IKCPs.end()) {
+                ikcpcb* kcp = it->second;
+                IKCPData* data = std::launder(static_cast<IKCPData*>(kcp->user));
+                auto mtx_ptr = data->mutex;
+                {
+                    std::lock_guard mlock(*mtx_ptr);
+                    ikcp_input(kcp, OutMessage, BytesWritten);
+                }
+            } else {
+                Log(0, "Receive message, but not related to KCP");
+                delete[] OutMessage;
+                return true;
+            };
+        }
+    } else {
+        delete[] localPUIDs;
+    }
+
+    delete[] OutMessage;
+    return ReceivePacketResult == EOS_EResult::EOS_Success;
+}
+
+static ikcpcb* CreateIKCPFor(char* localPUID, char* remotePUID, char* socketID, char channel) {
+    uint64_t hash1 = CalculateHash1(localPUID, remotePUID, socketID, channel);
+    uint64_t hash2 = CalculateHash2(localPUID, remotePUID, socketID, channel);
+
+    Fingerprint fprint = { hash1, hash2 };
+
+    {
+        std::unique_lock lock(lock_ikcp);
+        char* localPUIDcopy = copyString(localPUID);
+        char* remotePUIDcopy = copyString(remotePUID);
+        char* socketIDcopy = copyString(socketID);
+
+        auto it = IKCPs.find(fprint);
+        if (it != IKCPs.end()) return it->second;
+        IKCPData* userdata = new IKCPData();
+        userdata->localPUID = localPUIDcopy;
+        userdata->remotePUID = remotePUIDcopy;
+        userdata->socketID = socketIDcopy;
+        userdata->channel = channel;
+        userdata->mutex = std::make_shared<std::mutex>();
+        ikcpcb* kcp = ikcp_create(0, userdata);
+        kcp->output = sendIKCPData;
+        kcp->stream = 1;
+        ikcp_nodelay(kcp, 1, IKCP_INTERVAL, 2, 1);
+        ikcp_setmtu(kcp, 1024);
+        ikcp_wndsize(kcp, 128, 128);
+
+        IKCPs[fprint] = kcp;
+        return kcp;
+    }
+}
+
+static void RemoveIKCPFor(char* localPUID, char* remotePUID, char* socketID, char channel) {
+    uint64_t hash1 = CalculateHash1(localPUID, remotePUID, socketID, channel);
+    uint64_t hash2 = CalculateHash2(localPUID, remotePUID, socketID, channel);
+
+    Fingerprint fprint = { hash1, hash2 };
+
+    {
+        std::unique_lock lock(lock_ikcp);
+        auto it = IKCPs.find(fprint);
+        if (it != IKCPs.end()) {
+            IKCPData* userdata = std::launder(static_cast<IKCPData*>(it->second->user));
+            auto mtx_ptr = userdata->mutex;
+            {
+                std::lock_guard mlock(*mtx_ptr);
+                ikcp_release(it->second);
+                IKCPs.erase(it);
+                delete[] userdata->localPUID;
+                delete[] userdata->remotePUID;
+                delete[] userdata->socketID;
+            }
+            delete userdata;
+        }
+    }
+}
+
 extern "C" {
     JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         globalJVM = vm;
@@ -764,12 +1032,69 @@ extern "C" {
                     std::lock_guard lock(p2pOptMutex);
                     EOS_Platform_Tick(platformHandle);
                 }
-                while (!isShutdown.load() && tryReceive(env));
-                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                const auto start = std::chrono::steady_clock::now();
+                while (!isShutdown.load()) {
+                    // if (!tryReceive(env)) break;
+                    if (!tryReceiveFromEOS()) break;
+
+                    auto now = std::chrono::steady_clock::now();
+                    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() > 12) break;
+                };
+                std::this_thread::yield();
             }
         });
 
         mainLoopThread->detach();
+
+        char* raw = new char[32768];
+
+        ikcpthread = new std::thread([raw]() {
+            ScopedEnv envs;
+            JNIEnv* env = envs;
+            while (!isShutdown.load()) {
+                auto now = std::chrono::steady_clock::now().time_since_epoch();
+                auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+                {
+                    std::shared_lock lock(lock_ikcp);
+                    for (const auto& [fp, ikcp]: IKCPs) {
+                        IKCPData* data = std::launder(static_cast<IKCPData*>(ikcp->user));
+                        auto mtx_lck = data->mutex;
+                        std::lock_guard mlock(*mtx_lck);
+                        ikcp_update(ikcp, millis);
+
+                        jobject localConsumer;
+                        jmethodID localMethodID;
+                        {
+                            std::lock_guard lockr(receiveMutex);
+                            if (globalReceiveConsumer == nullptr) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                                continue;
+                            };
+                            localConsumer = env->NewLocalRef(globalReceiveConsumer);
+                            localMethodID = globalReceiveMethod;
+                        }
+                        jstring remotePUID = env->NewStringUTF(data->remotePUID);
+                        jstring socketID = env->NewStringUTF(data->socketID);
+                        while (true) {
+                            int size = ikcp_recv(ikcp, raw, 32768);
+                            if (size > 0) {
+                                jbyteArray arr = env->NewByteArray(size);
+                                env->SetByteArrayRegion(arr, 0, size, std::launder(reinterpret_cast<const jbyte*>(raw)));
+                                env->CallVoidMethod(localConsumer, localMethodID, remotePUID, socketID, data->channel, arr);
+                                checkException(env);
+                                env->DeleteLocalRef(arr);
+                            } else {
+                                break;
+                            }
+                        }
+                        env->DeleteLocalRef(remotePUID);
+                        env->DeleteLocalRef(socketID);
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+        ikcpthread->detach();
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_SetNameGetter(JNIEnv* env, jclass clazz, jobject supplier) {
@@ -819,13 +1144,13 @@ extern "C" {
         EOS_Connect_CreateDeviceId(connectHandle, &options, client_data, [](const EOS_Connect_CreateDeviceIdCallbackInfo* data) {
             ScopedEnv envs;
             JNIEnv* env = envs;
-            ClientData* client_data = static_cast<ClientData*>(data->ClientData);
+            ClientData* client_data = std::launder(static_cast<ClientData*>(data->ClientData));
             if (data->ResultCode == EOS_EResult::EOS_Success || data->ResultCode == EOS_EResult::EOS_DuplicateNotAllowed) {
                 Login(client_data, [](const EOS_Connect_LoginCallbackInfo* data) {
                     if (isShutdown.load()) return;
                     ScopedEnv envs;
                     JNIEnv* env = envs;
-                    ClientData* client_data = static_cast<ClientData*>(data->ClientData);
+                    ClientData* client_data = std::launder(static_cast<ClientData*>(data->ClientData));
                     if (data->ResultCode == EOS_EResult::EOS_Success) {
                         char buffer[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
                         int32_t buffer_size = sizeof(buffer);
@@ -853,7 +1178,7 @@ extern "C" {
                             if (isShutdown.load()) return;
                             ScopedEnv envs;
                             JNIEnv* env = envs;
-                            ClientData* client_data = static_cast<ClientData*>(data->ClientData);
+                            ClientData* client_data = std::launder(static_cast<ClientData*>(data->ClientData));
 
                             if (data->ResultCode == EOS_EResult::EOS_Success) {
                                 char buffer[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
@@ -1028,35 +1353,118 @@ extern "C" {
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_connectOrAccept(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
         if (isShutdown.load()) return env->NewStringUTF("--shutdown");
-        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_ACCEPTCONNECTION_API_LATEST, EOS_P2P_AcceptConnection);
+        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_ACCEPTCONNECTION_API_LATEST, +[](EOS_HP2P Handle, const EOS_P2P_AcceptConnectionOptions *Options) {
+            char localUserID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+            char remoteUserID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+            int32_t size = sizeof(localUserID);
+            EOS_ProductUserId_ToString(Options->LocalUserId, localUserID, &size);
+            size = sizeof(remoteUserID);
+            EOS_ProductUserId_ToString(Options->RemoteUserId, remoteUserID, &size);
+            CreateIKCPFor(localUserID, remoteUserID, std::launder(const_cast<char*>(Options->SocketId->SocketName)), 0);
+            EOS_EResult result = EOS_P2P_AcceptConnection(Handle, Options);
+            if (result != EOS_EResult::EOS_Success) {
+                RemoveIKCPFor(localUserID, remoteUserID, std::launder(const_cast<char*>(Options->SocketId->SocketName)), 0);
+            }
+            return result;
+        });
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_close(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring SocketIDj) {
         if (isShutdown.load()) return env->NewStringUTF("--shutdown");
-        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_CLOSECONNECTION_API_LATEST, EOS_P2P_CloseConnection);
+        return doConnectionAction(env, localPUIDj, remotePUIDj, SocketIDj, EOS_P2P_CLOSECONNECTION_API_LATEST, +[](EOS_HP2P Handle, const EOS_P2P_CloseConnectionOptions* Options) {
+            EOS_EResult result = EOS_P2P_CloseConnection(Handle, Options);
+            if (result == EOS_EResult::EOS_Success) {
+                char localUserID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+                char remoteUserID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+                int32_t size = sizeof(localUserID);
+                EOS_ProductUserId_ToString(Options->LocalUserId, localUserID, &size);
+                size = sizeof(remoteUserID);
+                EOS_ProductUserId_ToString(Options->RemoteUserId, remoteUserID, &size);
+                RemoveIKCPFor(localUserID, remoteUserID, std::launder(const_cast<char*>(Options->SocketId->SocketName)), 0);
+            }
+            return result;
+        });
     };
 
     JNIEXPORT jstring JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_send(JNIEnv* env, jclass clazz, jstring localPUIDj, jstring remotePUIDj, jstring socketIDj, jbyte channel, jbyteArray dataj) {
         if (isShutdown.load()) return env->NewStringUTF("--shutdown");
+        jsize sizep = env->GetArrayLength(dataj);
+        if (sizep == 0) return nullptr;
+
+        jbyte* bytes = new jbyte[sizep];
+        const uint32_t len = static_cast<uint32_t>(sizep) * sizeof(jbyte);
+        env->GetByteArrayRegion(dataj, 0, sizep, bytes);
+
         char* localPUIDs = makeCharFromJString(env, localPUIDj);
         char* remotePUIDs = makeCharFromJString(env, remotePUIDj);
         char* socketIDs = socketIDj == nullptr ? nullptr : makeCharFromJString(env, socketIDj);
 
         EOS_ProductUserId localPUID = EOS_ProductUserId_FromString(localPUIDs);
         EOS_ProductUserId remotePUID = EOS_ProductUserId_FromString(remotePUIDs);
-        delete[] localPUIDs;
-        delete[] remotePUIDs;
 
         if (EOS_ProductUserId_IsValid(remotePUID) == EOS_FALSE) {
-            if (socketIDs != nullptr) delete[] socketIDs;
+            if (socketIDs != nullptr) {
+                delete[] socketIDs;
+                delete[] localPUIDs;
+                delete[] remotePUIDs;
+            }
             return env->NewStringUTF("--remote_not_valid");
         }
         if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
-            if (socketIDs != nullptr) delete[] socketIDs;
+            if (socketIDs != nullptr) {
+                delete[] socketIDs;
+                delete[] localPUIDs;
+                delete[] remotePUIDs;
+            }
             return env->NewStringUTF("--local_not_valid");
         }
 
-        EOS_P2P_SendPacketOptions Options = {};
+        uint64_t hash1 = CalculateHash1(localPUIDs, remotePUIDs, socketIDs, channel);
+        uint64_t hash2 = CalculateHash2(localPUIDs, remotePUIDs, socketIDs, channel);
+        Fingerprint fprint = { hash1, hash2 };
+        {
+            std::shared_lock lock(lock_ikcp);
+            auto it = IKCPs.find(fprint);
+            if (it == IKCPs.end()) {
+                delete[] bytes;
+                return env->NewStringUTF("--connection_corrupted_unexpected");
+            }
+            ikcpcb* kcp = it->second;
+            auto mtx_ptr = std::launder(static_cast<IKCPData*>(kcp->user))->mutex;
+            int sent_val;
+            {
+                std::lock_guard mlock(*mtx_ptr);
+                sent_val = ikcp_send(kcp, std::launder(reinterpret_cast<const char*>(bytes)), len);
+            }
+            if (sent_val < 0) {
+                delete[] bytes;
+                delete[] socketIDs;
+                delete[] localPUIDs;
+                delete[] remotePUIDs;
+                switch (sent_val) {
+                    case -1:
+                        return env->NewStringUTF("--len_less_than_zero");
+                    case -2:
+                        return env->NewStringUTF("--seg_failed");
+                    default:
+                        return env->NewStringUTF("--sent_unknown_error");
+                }
+            }
+            if (sent_val < len) {
+                delete[] bytes;
+                delete[] socketIDs;
+                delete[] localPUIDs;
+                delete[] remotePUIDs;
+                return env->NewStringUTF(std::to_string(sent_val).c_str());
+            }
+        }
+        delete[] bytes;
+        delete[] socketIDs;
+        delete[] localPUIDs;
+        delete[] remotePUIDs;
+        return nullptr;
+
+        /* EOS_P2P_SendPacketOptions Options = {};
         Options.ApiVersion = EOS_P2P_SENDPACKET_API_LATEST;
         Options.LocalUserId = localPUID;
         Options.RemoteUserId = remotePUID;
@@ -1065,16 +1473,14 @@ extern "C" {
         Options.Channel = static_cast<uint8_t>(channel);
         Options.Reliability = EOS_EPacketReliability::EOS_PR_ReliableOrdered;
         Options.bDisableAutoAcceptConnection = EOS_TRUE;
-        jbyte* bytes = env->GetByteArrayElements(dataj, nullptr);
-        uint32_t len = static_cast<uint32_t>(env->GetArrayLength(dataj)) * sizeof(jbyte);
 
         EOS_EResult SendPacketResult = EOS_EResult::EOS_Success;
 
         {
             std::lock_guard lock(p2pOptMutex);
-            for (uint32_t i = 0; i < len; i = i + 1024) {
-                jbyte* bytesStart = bytes + i;
-                uint32_t size = len - i > 1024 ? 1024 : len - i;
+            for (volatile uint32_t i = 0; i < len; i = i + 1024) {
+                const jbyte* bytesStart = bytes + i;
+                const uint32_t size = len - i > 1024 ? 1024 : len - i;
 
                 Options.DataLengthBytes = size;
                 Options.Data = bytesStart;
@@ -1084,14 +1490,14 @@ extern "C" {
             }
         }
 
-        env->ReleaseByteArrayElements(dataj, bytes, JNI_ABORT);
         if (Options.SocketId != nullptr) delete Options.SocketId;
         if (socketIDs != nullptr) delete[] socketIDs;
+        delete[] bytes;
 
         if (SendPacketResult == EOS_EResult::EOS_Success) return nullptr;
 
         const char* errorCode = EOS_EResult_ToString(SendPacketResult);
-        return env->NewStringUTF(errorCode);
+        return env->NewStringUTF(errorCode); */
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_registerReceiveCallbackFor(JNIEnv* env, jclass clazz, jstring localPUIDj, jobject consumer) {

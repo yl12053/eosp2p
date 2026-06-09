@@ -84,6 +84,7 @@ public class EosP2PChannel extends AbstractChannel {
 
     @Override
     protected void doClose() throws Exception {
+        LOGGER.debug("Close stack: ", new RuntimeException("Close stack"));
         if (isClosed.compareAndSet(false, true)) {
             EOSNative.close(local.getPUID(), remote.getPUID(), remote.getSocketID());
             ((Unsafe) this.unsafe()).unregister();
@@ -124,6 +125,7 @@ public class EosP2PChannel extends AbstractChannel {
                     if (err == null) {
                         in.remove();
                     } else {
+                        LOGGER.error("Received error: {}", err);
                         throw new IOException(err);
                     }
                 } catch (Throwable t) {
@@ -217,6 +219,7 @@ public class EosP2PChannel extends AbstractChannel {
                         ConnectTimeoutException cause =
                                 new ConnectTimeoutException("Connection timed out: " + remoteAddress);
                         if (connectPromise != null && connectPromise.tryFailure(cause)) {
+                            LOGGER.debug("Close Timeout");
                             close(voidPromise());
                             unregister();
                         }
@@ -229,6 +232,7 @@ public class EosP2PChannel extends AbstractChannel {
                             connectTimeoutFuture.cancel(false);
                         }
                         connectPromise = null;
+                        LOGGER.debug("Close cancel: ", new RuntimeException("Close stack"));
                         close(voidPromise());
                     }
                 });
@@ -241,6 +245,7 @@ public class EosP2PChannel extends AbstractChannel {
                             if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
                             connectTimeoutFuture = null;
                             if (connectPromise != null && connectPromise.tryFailure(new IOException(Component.translatable("error.eosp2p." + error).getString()))) {
+                                LOGGER.debug("Close error: {}", ret);
                                 close(voidPromise());
                                 unregister();
                             }

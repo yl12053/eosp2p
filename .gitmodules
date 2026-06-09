@@ -1,0 +1,6 @@
+[submodule "src/main/cpp/Src/kcp"]
+	path = src/main/cpp/Src/kcp
+	url = https://github.com/skywind3000/kcp.git
+[submodule "src/main/cpp/Src/ska"]
+	path = src/main/cpp/Src/ska
+	url = https://github.com/skarupke/flat_hash_map.git
