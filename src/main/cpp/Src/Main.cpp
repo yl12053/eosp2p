@@ -603,87 +603,6 @@ inline void throwException(JNIEnv*& env, const char* msg, const char* clazz) {
     }
 }
 
-static bool tryReceive(JNIEnv*& env) {
-    if (isShutdown.load()) return false;
-    EOS_ProductUserId localPUID;
-    jobject localConsumer;
-    jmethodID localMethodID;
-    {
-        std::lock_guard lock(receiveMutex);
-        if (globalReceiveConsumer == nullptr) return false;
-        if (globalReceivePUID == nullptr) return false;
-        localPUID = EOS_ProductUserId_FromString(globalReceivePUID);
-        localConsumer = env->NewLocalRef(globalReceiveConsumer);
-        localMethodID = globalReceiveMethod;
-    }
-
-    if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
-        return false;
-    }
-
-    EOS_P2P_GetNextReceivedPacketSizeOptions SizeOpt = {};
-    SizeOpt.ApiVersion = EOS_P2P_GETNEXTRECEIVEDPACKETSIZE_API_LATEST;
-    SizeOpt.LocalUserId = localPUID;
-    SizeOpt.RequestedChannel = nullptr;
-
-    uint32_t nextSize;
-
-    EOS_EResult SizeRet = EOS_P2P_GetNextReceivedPacketSize(p2pHandle, &SizeOpt, &nextSize);
-
-    if (SizeRet == EOS_EResult::EOS_InvalidParameters) {
-        return false;
-    }
-    if (SizeRet == EOS_EResult::EOS_NotFound) {
-        return false;
-    };
-
-    EOS_P2P_ReceivePacketOptions ReceiveOptions = {};
-    ReceiveOptions.ApiVersion = EOS_P2P_RECEIVEPACKET_API_LATEST;
-    ReceiveOptions.LocalUserId = localPUID;
-    ReceiveOptions.MaxDataSizeBytes = nextSize;
-
-    ReceiveOptions.RequestedChannel = nullptr;
-
-    EOS_ProductUserId OutRemoteId = nullptr;
-    EOS_P2P_SocketId OutSocketId = EOS_P2P_SocketId();
-    uint8_t OutChannel = 0;
-
-    uint32_t BytesWritten = 0;
-    jbyte* OutMessage = new jbyte[nextSize];
-    EOS_EResult ReceivePacketResult = EOS_P2P_ReceivePacket(p2pHandle, &ReceiveOptions, &OutRemoteId, &OutSocketId, &OutChannel, OutMessage, &BytesWritten);
-
-    bool hasPacket = ReceivePacketResult == EOS_EResult::EOS_Success;
-
-    if (hasPacket) {
-        if (BytesWritten > std::numeric_limits<jsize>::max()) {
-            Log(0, fmtns::format("Packet too large! Got: {}, Maximum: {}", BytesWritten, std::numeric_limits<jsize>::max()).c_str());
-            delete[] OutMessage;
-            return false;
-        }
-        jsize smallSize = static_cast<jsize>(BytesWritten);
-        char remotePUID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
-        int32_t size = sizeof(remotePUID);
-        EOS_ProductUserId_ToString(OutRemoteId, remotePUID, &size);
-        jstring remotePUIDj = env->NewStringUTF(remotePUID);
-        jstring sid = OutSocketId.SocketName == nullptr ? nullptr : env->NewStringUTF(OutSocketId.SocketName);
-        jbyte channel = static_cast<jbyte>(OutChannel);
-        jbyteArray arr = env->NewByteArray(smallSize);
-        env->SetByteArrayRegion(arr, 0, smallSize, OutMessage);
-
-        env->CallVoidMethod(localConsumer, localMethodID, remotePUIDj, sid, channel, arr);
-        checkException(env);
-
-        env->DeleteLocalRef(remotePUIDj);
-        env->DeleteLocalRef(sid);
-        env->DeleteLocalRef(arr);
-    }
-
-    env->DeleteLocalRef(localConsumer);
-    delete[] OutMessage;
-
-    return hasPacket;
-}
-
 constexpr uint64_t MAGIC_NUM_1 = 0x17b7cd11f9a12c6ull;
 constexpr uint64_t MAGIC_NUM_2 = 0x71002c434b0af32dull;
 
@@ -1463,41 +1382,6 @@ extern "C" {
         delete[] localPUIDs;
         delete[] remotePUIDs;
         return nullptr;
-
-        /* EOS_P2P_SendPacketOptions Options = {};
-        Options.ApiVersion = EOS_P2P_SENDPACKET_API_LATEST;
-        Options.LocalUserId = localPUID;
-        Options.RemoteUserId = remotePUID;
-        Options.SocketId = socketIDs == nullptr ? nullptr : MakeSocketID(socketIDs);
-        Options.bAllowDelayedDelivery = EOS_TRUE;
-        Options.Channel = static_cast<uint8_t>(channel);
-        Options.Reliability = EOS_EPacketReliability::EOS_PR_ReliableOrdered;
-        Options.bDisableAutoAcceptConnection = EOS_TRUE;
-
-        EOS_EResult SendPacketResult = EOS_EResult::EOS_Success;
-
-        {
-            std::lock_guard lock(p2pOptMutex);
-            for (volatile uint32_t i = 0; i < len; i = i + 1024) {
-                const jbyte* bytesStart = bytes + i;
-                const uint32_t size = len - i > 1024 ? 1024 : len - i;
-
-                Options.DataLengthBytes = size;
-                Options.Data = bytesStart;
-                SendPacketResult = EOS_P2P_SendPacket(p2pHandle, &Options);
-
-                if (SendPacketResult != EOS_EResult::EOS_Success) break;
-            }
-        }
-
-        if (Options.SocketId != nullptr) delete Options.SocketId;
-        if (socketIDs != nullptr) delete[] socketIDs;
-        delete[] bytes;
-
-        if (SendPacketResult == EOS_EResult::EOS_Success) return nullptr;
-
-        const char* errorCode = EOS_EResult_ToString(SendPacketResult);
-        return env->NewStringUTF(errorCode); */
     };
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_registerReceiveCallbackFor(JNIEnv* env, jclass clazz, jstring localPUIDj, jobject consumer) {
