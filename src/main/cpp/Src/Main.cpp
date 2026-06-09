@@ -361,13 +361,14 @@ static int CreatePlatform(double timeout, const char* productID, const char* cli
 
     EOS_Connect_AddNotifyAuthExpiration(connectHandle, &NotifyAuthExpirationOptions, nullptr, [](const EOS_Connect_AuthExpirationCallbackInfo* data) {
         if (isShutdown.load()) return;
-        ClientData* datas = new ClientData();
-        Login(datas, [](const EOS_Connect_LoginCallbackInfo* data) {
-            ClientData* datas = std::launder(static_cast<ClientData *>(data->ClientData));
+        // ClientData* datas = new ClientData();
+        auto datas = std::make_unique<ClientData>();
+        Login(datas.release(), [](const EOS_Connect_LoginCallbackInfo* data) {
+            std::unique_ptr<ClientData> datas(std::launder(static_cast<ClientData *>(data->ClientData)));
             if (datas->nameIfPresent != nullptr) {
                 delete[] datas->nameIfPresent;
             }
-            delete datas;
+            // delete datas;
         });
     });
     return 0;
@@ -628,7 +629,7 @@ inline uint64_t CalculateHash1(char* localPUID, char* remotePUID, char* socketID
 
     FNV_1A(hash, localPUID, strlen(localPUID));
     FNV_1A(hash, remotePUID, strlen(remotePUID));
-    FNV_1A(hash, socketID, strlen(socketID));
+    if (socketID != nullptr) FNV_1A(hash, socketID, strlen(socketID));
     FNV_1A(hash, &channel, 1);
     FNV_1A(hash, MAGIC_1.data(), 8);
 
@@ -640,7 +641,7 @@ inline uint64_t CalculateHash2(char* localPUID, char* remotePUID, char* socketID
 
     FNV_1A(hash, MAGIC_2.data(), 8);
     FNV_1A(hash, &channel, 1);
-    FNV_1A(hash, socketID, strlen(socketID));
+    if (socketID != nullptr) FNV_1A(hash, socketID, strlen(socketID));
     FNV_1A(hash, remotePUID, strlen(remotePUID));
     FNV_1A(hash, localPUID, strlen(localPUID));
 
@@ -711,12 +712,12 @@ static int sendIKCPData(const char* buf, int len, ikcpcb *kcp, void* user) {
 bool tryReceiveFromEOS() {
     if (isShutdown.load()) return false;
     EOS_ProductUserId localPUID;
-    char* localPUIDs = new char[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+    std::unique_ptr<char[]> localPUIDs(new char[EOS_PRODUCTUSERID_MAX_LENGTH + 1]);
     {
         std::lock_guard lock(receiveMutex);
         if (globalReceivePUID == nullptr) return false;
         localPUID = EOS_ProductUserId_FromString(globalReceivePUID);
-        strcpy(localPUIDs, globalReceivePUID);
+        strcpy(localPUIDs.get(), globalReceivePUID);
     }
 
     if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
@@ -752,13 +753,13 @@ bool tryReceiveFromEOS() {
     uint8_t OutChannel = 0;
 
     uint32_t BytesWritten = 0;
-    char* OutMessage = new char[nextSize];
+    std::unique_ptr<char[]> OutMessage(new char[nextSize]);
 
     EOS_EResult ReceivePacketResult;
 
     {
         std::lock_guard lock(p2pOptMutex);
-        ReceivePacketResult = EOS_P2P_ReceivePacket(p2pHandle, &ReceiveOptions, &OutRemoteId, &OutSocketId, &OutChannel, OutMessage, &BytesWritten);
+        ReceivePacketResult = EOS_P2P_ReceivePacket(p2pHandle, &ReceiveOptions, &OutRemoteId, &OutSocketId, &OutChannel, OutMessage.get(), &BytesWritten);
     }
 
     if (ReceivePacketResult == EOS_EResult::EOS_Success) {
@@ -766,9 +767,8 @@ bool tryReceiveFromEOS() {
         int32_t size = sizeof(remotePUID);
         EOS_ProductUserId_ToString(OutRemoteId, remotePUID, &size);
 
-        uint64_t hash1 = CalculateHash1(localPUIDs, remotePUID, OutSocketId.SocketName, OutChannel);
-        uint64_t hash2 = CalculateHash2(localPUIDs, remotePUID, OutSocketId.SocketName, OutChannel);
-        delete[] localPUIDs;
+        uint64_t hash1 = CalculateHash1(localPUIDs.get(), remotePUID, OutSocketId.SocketName, OutChannel);
+        uint64_t hash2 = CalculateHash2(localPUIDs.get(), remotePUID, OutSocketId.SocketName, OutChannel);
         Fingerprint fprint = { hash1, hash2 };
         {
             std::shared_lock lock(lock_ikcp);
@@ -779,19 +779,14 @@ bool tryReceiveFromEOS() {
                 auto mtx_ptr = data->mutex;
                 {
                     std::lock_guard mlock(*mtx_ptr);
-                    ikcp_input(kcp, OutMessage, BytesWritten);
+                    ikcp_input(kcp, OutMessage.get(), BytesWritten);
                 }
             } else {
                 Log(0, "Receive message, but not related to KCP");
-                delete[] OutMessage;
-                return true;
             };
         }
-    } else {
-        delete[] localPUIDs;
     }
 
-    delete[] OutMessage;
     return ReceivePacketResult == EOS_EResult::EOS_Success;
 }
 
@@ -803,12 +798,12 @@ static ikcpcb* CreateIKCPFor(char* localPUID, char* remotePUID, char* socketID, 
 
     {
         std::unique_lock lock(lock_ikcp);
-        char* localPUIDcopy = copyString(localPUID);
-        char* remotePUIDcopy = copyString(remotePUID);
-        char* socketIDcopy = copyString(socketID);
 
         auto it = IKCPs.find(fprint);
         if (it != IKCPs.end()) return it->second;
+        char* localPUIDcopy = copyString(localPUID);
+        char* remotePUIDcopy = copyString(remotePUID);
+        char* socketIDcopy = copyString(socketID);
         IKCPData* userdata = new IKCPData();
         userdata->localPUID = localPUIDcopy;
         userdata->remotePUID = remotePUIDcopy;
