@@ -4,3 +4,6 @@
 [submodule "src/main/cpp/Src/ska"]
 	path = src/main/cpp/Src/ska
 	url = https://github.com/skarupke/flat_hash_map.git
+[submodule "src/main/cpp/Src/fmt"]
+	path = src/main/cpp/Src/fmt
+	url = https://github.com/fmtlib/fmt.git
