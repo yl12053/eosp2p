@@ -19,6 +19,7 @@ on:
 jobs:
   build_native:
     runs-on: ${{ matrix.os }}
+    container: ${{ fromJSON(matrix.container_img) }}
     defaults:
       run:
         shell: bash
@@ -26,6 +27,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
+        include:
+          - os: ubuntu-latest
+            container_img: '{"image": "ubuntu:18.04"}'
+          - os: ubuntu-24.04-arm
+            container_img: '{"image": "arm64v8/ubuntu:18.04"}'
+          - os: macos-latest
+            container_img: '{"image": null}'
+
 
     steps:
       - uses: actions/checkout@v6
