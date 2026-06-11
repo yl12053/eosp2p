@@ -13,3 +13,6 @@
 [submodule "src/main/cpp/Src/cppcrc"]
 	path = src/main/cpp/Src/cppcrc
 	url = https://github.com/DarrenLevine/cppcrc.git
+[submodule "src/main/cpp/Src/jni-headers"]
+	path = src/main/cpp/Src/jni-headers
+	url = https://github.com/Casterlabs/jni-headers.git
