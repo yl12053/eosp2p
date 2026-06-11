@@ -29,9 +29,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
         include:
           - os: ubuntu-latest
-            container_img: '{"image": "ubuntu:18.04"}'
+            container_img: '{"image": "ubuntu:20.04"}'
           - os: ubuntu-24.04-arm
-            container_img: '{"image": "arm64v8/ubuntu:18.04"}'
+            container_img: '{"image": "arm64v8/ubuntu:20.04"}'
           - os: macos-latest
             container_img: '{"image": null}'
 
