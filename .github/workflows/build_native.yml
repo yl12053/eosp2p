@@ -19,7 +19,6 @@ on:
 jobs:
   build_native:
     runs-on: ${{ matrix.os }}
-    container: ${{ fromJSON(matrix.container_img) }}
     defaults:
       run:
         shell: bash
@@ -29,20 +28,11 @@ jobs:
         os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
         include:
           - os: ubuntu-latest
-            container_img: '{"image": "ubuntu:20.04"}'
+            zigkey: x86_64
           - os: ubuntu-24.04-arm
-            container_img: '{"image": "arm64v8/ubuntu:20.04"}'
-          - os: macos-latest
-            container_img: '{"image": null}'
-
+            zigkey: aarch64
 
     steps:
-      - name: Install Git
-        if: runner.os == 'Linux'
-        run: |
-          apt-get update
-          apt-get install -y git curl ca-certificates unzip tar
-
       - uses: actions/checkout@v6
         with:
           submodules: 'recursive'
@@ -66,7 +56,9 @@ jobs:
       - name: Install Compilers in Linux
         if: runner.os == 'Linux'
         run: |
-          apt install clang lld llvm -y
+          curl https://ziglang.org/builds/zig-${{ matrix.zigkey }}-linux-0.17.0-dev.813+2153f8143.tar.xz --output zig.tar.xz
+          tar -Jxvf zig.tar.xz
+          echo "zig-x86_64-linux-0.17.0-dev.813+2153f8143" >> $GITHUB_PATH
 
       - name: Install Cross-Compiler for Windows in Linux
         if: runner.os == 'Linux' && runner.arch == 'X64'
@@ -99,7 +91,7 @@ jobs:
           if [ "${{ inputs.debug }}" == "true" ]; then
             export DO_DEBUG_ARG=-g3 -Wall -Wextra -Wpedantic
           fi
-          clang++ --target=x86_64-linux-gnu -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-Linux-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linuxx64.so
+          zig c++ --target=x86_64-linux-gnu.2.31 -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-Linux-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linuxx64.so
           x86_64-w64-mingw32-clang++ -static -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o mainx64.dll
           aarch64-w64-mingw32-clang++ --target=aarch64-w64-mingw32 -fuse-ld=lld -static -O3 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shippingarm64.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o mainarm64.dll
 
@@ -110,7 +102,7 @@ jobs:
           if [ "${{ inputs.debug }}" == "true" ]; then
             export DO_DEBUG_ARG=-g3 -Wall -Wextra -Wpedantic
           fi
-          clang++ --target=aarch64-linux-gnu -O3 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-LinuxArm64-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linuxarm64.so
+          zig c++ --target=aarch64-linux-gnu.2.31 -O3 -fno-plt -ffunction-sections -fdata-sections -fno-rtti $DO_DEBUG_ARG -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -l:libEOSSDK-LinuxArm64-Shipping.so ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linuxarm64.so
 
       - name: Compile (MacOS)
         if: runner.os == 'macOS'
