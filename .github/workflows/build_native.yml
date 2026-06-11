@@ -66,7 +66,7 @@ jobs:
       - name: Install Compilers in Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt install clang lld llvm
+          apt install clang lld llvm
 
       - name: Install Cross-Compiler for Windows in Linux
         if: runner.os == 'Linux' && runner.arch == 'X64'
