@@ -103,8 +103,8 @@ public class FMLCommonSetupHandler {
                     reasonEOS = ReasonEOS.SUBSCRIBE_INTERRUPT_CONNECTION_FAILED;
                     return;
                 }
-                subscribeCloseConnectionRequestHandler((local, remote, name) ->
-                        EXECUTOR.accept(() -> MinecraftForge.EVENT_BUS.post(new ConnectClose(local, remote, name))));
+                subscribeCloseConnectionRequestHandler((local, remote, name, reason) ->
+                        EXECUTOR.accept(() -> MinecraftForge.EVENT_BUS.post(new ConnectClose(local, remote, name, reason))));
                 if (!subscribeCloseConnectionRequest(puid, null)) {
                     LOGGER.error("Failed to subscribe");
                     IsRunningEOS = false;

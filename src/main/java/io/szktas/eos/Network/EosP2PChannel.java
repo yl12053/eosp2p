@@ -1,6 +1,5 @@
 package io.szktas.eos.Network;
 
-import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
@@ -20,6 +19,7 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.nio.channels.ConnectionPendingException;
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -297,9 +297,9 @@ public class EosP2PChannel extends AbstractChannel {
 
         @SubscribeEvent
         public void onConnectionEstablish(ConnectEstablished event) {
-            if (!Objects.equal(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
+            if (!Objects.equals(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
 
             eventLoop().execute(() -> {
                 try {
@@ -318,27 +318,65 @@ public class EosP2PChannel extends AbstractChannel {
 
         @SubscribeEvent
         public void onConnectionInterrupt(ConnectInterrupt event) {
-            if (!Objects.equal(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
+            if (!Objects.equals(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
 
             eventLoop().execute(() -> {
+                if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                Throwable exception = new IOException("Connection interrupted by unknown reason");
+                if (connectPromise != null) {
+                    connectPromise.tryFailure(exception);
+                }
+                pipeline().fireExceptionCaught(exception);
                 pipeline().fireChannelInactive();
                 pipeline().fireChannelUnregistered();
                 EosP2PChannel.this.close();
+                close(voidPromise());
+                unregister();
             });
         }
 
         @SubscribeEvent
         public void onConnectionClose(ConnectClose event) {
-            if (!Objects.equal(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
-            if (!Objects.equal(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
+            if (!Objects.equals(EosP2PChannel.this.local.getPUID(), event.SelfPUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getPUID(), event.RemotePUID)) return;
+            if (!Objects.equals(EosP2PChannel.this.remote.getSocketID(), event.SocketName)) return;
 
             eventLoop().execute(() -> {
+                if (Objects.equals(event.reason, "EOS_CCR_Unknown")) {
+                    if (connectPromise != null) {
+                        LOGGER.debug("Retry due to unknown error on initialization phase");
+                        String ret = connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
+                        if (ret != null && ret.startsWith("--")) {
+                            String error = ret.substring(2);
+                            if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                            connectTimeoutFuture = null;
+                            Throwable exc2 = new IOException(Component.translatable("error.eosp2p." + error).getString());
+                            if (connectPromise.tryFailure(exc2)) {
+                                LOGGER.debug("Close error: {}", ret);
+                                pipeline().fireExceptionCaught(exc2);
+                                pipeline().fireChannelInactive();
+                                pipeline().fireChannelUnregistered();
+                                EosP2PChannel.this.close();
+                                close(voidPromise());
+                                unregister();
+                            }
+                        }
+                        return;
+                    }
+                }
+                if (connectTimeoutFuture != null) connectTimeoutFuture.cancel(false);
+                Throwable exception = new IOException("Connection closed: " + event.reason);
+                if (connectPromise != null) {
+                    connectPromise.tryFailure(exception);
+                }
+                pipeline().fireExceptionCaught(exception);
                 pipeline().fireChannelInactive();
                 pipeline().fireChannelUnregistered();
                 EosP2PChannel.this.close();
+                close(voidPromise());
+                unregister();
             });
         }
     }

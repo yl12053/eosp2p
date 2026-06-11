@@ -1,4 +1,4 @@
-// g++ -O3 -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -g -I../Include -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include" -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include/win32" -L../Bin -std=c++20 -static-libgcc -static-libstdc++ -static -shared -l:../Bin/EOSSDK-Win64-Shipping.dll Main.cpp -o main.dll
+// clang++ -static -O3 -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wstack-usage=1024 -Wformat=2 -Wconversion -march=x86-64 -fno-plt -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -g3 -I../Include -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include" -I"C:/Program Files/Microsoft/jdk-17.0.12.7-hotspot/include/win32" -L../Bin -std=c++20 -static-libgcc -static-libstdc++ -shared -l:../Bin/EOSSDK-Win64-Shipping.dll Main.cpp kcp/ikcp.c -o main.dll
 
 #include <condition_variable>
 #include <cstring>
@@ -11,6 +11,8 @@
 #include <eos_sdk.h>
 #include <eos_connect.h>
 #include <eos_p2p.h>
+#include <future>
+#include <queue>
 #include <shared_mutex>
 
 #ifdef __APPLE__
@@ -24,19 +26,55 @@ namespace fmtns = std;
 #endif
 
 
-#include <fstream>
 #include <functional>
 #include <iomanip>
-#include <iostream>
 #include <mutex>
 #include <string>
 #include <thread>
 
 #include "ska/flat_hash_map.hpp"
+#include "magic_enum/include/magic_enum/magic_enum.hpp"
+
+#include "cppcrc/cppcrc.h"
 
 extern "C" {
 #include "kcp/ikcp.h"
 }
+
+class TaskQueue {
+public:
+    void Push(std::function<void()> task) {
+        std::lock_guard lock(mutex_);
+        tasks_.push(std::move(task));
+    }
+
+    std::queue<std::function<void()>> PopAll() {
+        std::queue<std::function<void()>> local_tasks;
+        {
+            std::lock_guard lock(mutex_);
+            std::swap(local_tasks, tasks_);
+        }
+        return local_tasks;
+    }
+
+    std::future<void*> Run(std::function<void*()> func) {
+        auto task_ptr = std::make_shared<std::packaged_task<void*()>>(std::move(func));
+
+        std::future<void*> fut = task_ptr->get_future();
+
+        Push([task_ptr]() {
+            (*task_ptr)();
+        });
+
+        return fut;
+    }
+
+private:
+    std::mutex mutex_;
+    std::queue<std::function<void()>> tasks_;
+};
+
+TaskQueue EOSQueue;
 
 #define FNV_OFFSET_BASIS 0xcbf29ce484222325ull
 #define FNV_PRIME 0x100000001b3ull
@@ -528,6 +566,43 @@ struct Callback {
         if (socket != nullptr) env->DeleteLocalRef(socket);
         env->DeleteLocalRef(triconsumer);
     }
+
+    static void closeMethod(const EOS_P2P_OnRemoteConnectionClosedInfo* Data) {
+        if (isShutdown.load()) return;
+        ScopedEnv envs;
+        JNIEnv* env = envs;
+        if (!envs.success()) return;
+        ScopedFrame frame(envs, 256);
+        jobject triconsumer;
+        jmethodID trimethod;
+        {
+            std::lock_guard lock(lockMutex);
+            if (globalConsumer == nullptr) return;
+            triconsumer = env->NewLocalRef(globalConsumer);
+            trimethod = globalMethodID;
+        }
+        char localpid[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        char remotepid[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
+        int32_t buffer_size = sizeof(localpid);
+        EOS_ProductUserId_ToString(Data->LocalUserId, localpid, &buffer_size);
+        EOS_ProductUserId_ToString(Data->RemoteUserId, remotepid, &buffer_size);
+
+        jstring local = env->NewStringUTF(localpid);
+        jstring remote = env->NewStringUTF(remotepid);
+        jstring socket = Data->SocketId->SocketName[0] == '\0' ? nullptr : env->NewStringUTF(Data->SocketId->SocketName);
+        auto reason = magic_enum::enum_name(Data->Reason);
+        auto str = std::string(reason);
+        jstring reasonz = env->NewStringUTF(str.c_str());
+
+        env->CallVoidMethod(triconsumer, trimethod, local, remote, socket, reasonz);
+        checkException(env);
+
+        env->DeleteLocalRef(local);
+        env->DeleteLocalRef(remote);
+        env->DeleteLocalRef(reasonz);
+        if (socket != nullptr) env->DeleteLocalRef(socket);
+        env->DeleteLocalRef(triconsumer);
+    }
 };
 
 template <NotificationOption T, CallbackNotificationStruct V>
@@ -600,9 +675,16 @@ static jstring doConnectionAction(JNIEnv* env, jstring localPUIDj, jstring remot
     Options.RemoteUserId = remotePUID;
     Options.SocketId = MakeSocketID(socketIDs);
 
-    EOS_EResult Result = func(p2pHandle, &Options);
+    auto fut = EOSQueue.Run([f = std::move(func), o = std::move(Options)] (){
+        EOS_EResult* vpot = new EOS_EResult;
+        *vpot = f(p2pHandle, &o);
+        return static_cast<void*>(vpot);
+    });
+    EOS_EResult* Result = static_cast<EOS_EResult*>(fut.get());
 
-    jstring returnval = Result == EOS_EResult::EOS_Success ? nullptr : env->NewStringUTF(EOS_EResult_ToString(Result));
+    jstring returnval = *Result == EOS_EResult::EOS_Success ? nullptr : env->NewStringUTF(EOS_EResult_ToString(*Result));
+    delete Result;
+
     if (Options.SocketId != nullptr) delete Options.SocketId;
     if (socketIDs != nullptr) delete[] socketIDs;
     return returnval;
@@ -680,7 +762,30 @@ ska::flat_hash_map<Fingerprint, ikcpcb*, FHash> IKCPs;
 
 constexpr int IKCP_INTERVAL = 10;
 
-static int sendIKCPData(const char* buf, int len, ikcpcb *kcp, void* user) {
+inline void uint32_to_bytes_be(uint32_t val, char* out) {
+    out[0] = (val >> 24) & 0xff;
+    out[1] = (val >> 16) & 0xff;
+    out[2] = (val >> 8) & 0xff;
+    out[3] = val & 0xff;
+}
+
+inline uint32_t bytes_to_uint32_be(char* in) {
+    uint32_t r = 0;
+    r |= static_cast<uint32_t>(static_cast<uint8_t>(in[3] & 0xff));
+    r |= static_cast<uint32_t>(static_cast<uint8_t>(in[2] & 0xff)) << 8;
+    r |= static_cast<uint32_t>(static_cast<uint8_t>(in[1] & 0xff)) << 16;
+    r |= static_cast<uint32_t>(static_cast<uint8_t>(in[0] & 0xff)) << 24;
+    return r;
+}
+
+static int sendIKCPData(const char* bufraw, int lenraw, ikcpcb *kcp, void* user) {
+    int len = lenraw + 4;
+    char* buf = new char[len];
+    memcpy(buf + 4, bufraw, lenraw);
+
+    uint32_t crc = CRC32::C::calc(std::launder(reinterpret_cast<const uint8_t*>(bufraw)), lenraw);
+    uint32_to_bytes_be(crc, buf);
+
     IKCPData* data = std::launder(static_cast<IKCPData*>(user));
     EOS_ProductUserId localPUID = EOS_ProductUserId_FromString(data->localPUID);
     EOS_ProductUserId remotePUID = EOS_ProductUserId_FromString(data->remotePUID);
@@ -705,6 +810,7 @@ static int sendIKCPData(const char* buf, int len, ikcpcb *kcp, void* user) {
     }
 
     delete Options.SocketId;
+    delete[] buf;
 
     if (result != EOS_EResult::EOS_Success) {
         Log(0, fmtns::format("Send packet not success: {}",  EOS_EResult_ToString(result)).c_str());
@@ -767,6 +873,19 @@ bool tryReceiveFromEOS() {
     }
 
     if (ReceivePacketResult == EOS_EResult::EOS_Success) {
+        const char* rawData = OutMessage.get() + 4;
+        uint32_t realSize = BytesWritten - 4;
+        if (realSize <= 0) {
+            Log(0, "Message too small, without checksum");
+            return false;
+        }
+        uint32_t checksumGiven = bytes_to_uint32_be(OutMessage.get());
+        uint32_t calculateChecksum = CRC32::C::calc(reinterpret_cast<const uint8_t*>(rawData), realSize);
+        if (checksumGiven != calculateChecksum) {
+            Log(0, "Checksum failed");
+            return false;
+        }
+
         char remotePUID[EOS_PRODUCTUSERID_MAX_LENGTH + 1];
         int32_t size = sizeof(remotePUID);
         EOS_ProductUserId_ToString(OutRemoteId, remotePUID, &size);
@@ -783,7 +902,7 @@ bool tryReceiveFromEOS() {
                 auto mtx_ptr = data->mutex;
                 {
                     std::lock_guard mlock(*mtx_ptr);
-                    ikcp_input(kcp, OutMessage.get(), BytesWritten);
+                    ikcp_input(kcp, rawData, realSize);
                 }
             } else {
                 Log(0, "Receive message, but not related to KCP");
@@ -851,7 +970,58 @@ static void RemoveIKCPFor(char* localPUID, char* remotePUID, char* socketID, cha
     }
 }
 
-char* raw = new char[32768];
+static void Teardown() {
+    bool expected = false;
+    if (isShutdown.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+        EOS_Shutdown();
+    }
+}
+
+class DynBuffer {
+public:
+    DynBuffer(unsigned int size) {
+        p = static_cast<char*>(malloc(size));
+        s = size;
+    }
+
+    void reserveIfSmaller(unsigned int size) {
+        if (size < s) return;
+
+        unsigned int need_size = std::bit_ceil(size);
+
+        p = static_cast<char*>(realloc(p, need_size));
+        s = need_size;
+    }
+
+    char* get() {
+        return p;
+    }
+
+    unsigned int size() {
+        return s;
+    }
+
+    operator char* () const {
+        return p;
+    }
+
+    const jbyte* getBuf()  {
+        return reinterpret_cast<const jbyte*>(p);
+    }
+
+    ~DynBuffer() {
+        free(p);
+    }
+
+    DynBuffer(const DynBuffer&) = delete;
+    DynBuffer& operator=(const DynBuffer&) = delete;
+private:
+    char* p = nullptr;
+    unsigned int s = 0;
+};
+
+DynBuffer buffer(32768);
+
 
 extern "C" {
     JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
@@ -961,6 +1131,11 @@ extern "C" {
                     std::lock_guard lock(p2pOptMutex);
                     EOS_Platform_Tick(platformHandle);
                 }
+                auto localTask = EOSQueue.PopAll();
+                while (!localTask.empty() && !isShutdown.load()) {
+                    localTask.front()();
+                    localTask.pop();
+                }
                 const auto start = std::chrono::steady_clock::now();
                 while (!isShutdown.load()) {
                     // if (!tryReceive(env)) break;
@@ -1003,11 +1178,14 @@ extern "C" {
                         }
                         jstring remotePUID = env->NewStringUTF(data->remotePUID);
                         jstring socketID = env->NewStringUTF(data->socketID);
-                        while (true) {
-                            int size = ikcp_recv(ikcp, raw, 32768);
+                        while (!isShutdown.load()) {
+                            int wsize = ikcp_peeksize(ikcp);
+                            if (wsize < 0) break;
+                            buffer.reserveIfSmaller(wsize);
+                            int size = ikcp_recv(ikcp, buffer, wsize);
                             if (size > 0) {
                                 jbyteArray arr = env->NewByteArray(size);
-                                env->SetByteArrayRegion(arr, 0, size, std::launder(reinterpret_cast<const jbyte*>(raw)));
+                                env->SetByteArrayRegion(arr, 0, size, std::launder(buffer.getBuf()));
                                 env->CallVoidMethod(localConsumer, localMethodID, remotePUID, socketID, data->channel, arr);
                                 checkException(env);
                                 env->DeleteLocalRef(arr);
@@ -1271,7 +1449,7 @@ extern "C" {
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeCloseConnectionRequestHandler(JNIEnv* env, jclass, jobject triconsumer) {
         if (isShutdown.load()) return;
-        setGenericCallback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod, "accept", 3>(env, triconsumer);
+        setGenericCallback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod, "accept", 4>(env, triconsumer);
     };
 
     JNIEXPORT jboolean JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_subscribeCloseConnectionRequest(JNIEnv* env, jclass, jstring puidj, jstring socketj) {
@@ -1279,7 +1457,7 @@ extern "C" {
         return SubscribeP2PGenericRequest(
             env, puidj, socketj, EOS_P2P_ADDNOTIFYPEERCONNECTIONCLOSED_API_LATEST,
             EOS_P2P_AddNotifyPeerConnectionClosed,
-            Callback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod>::defaultMethod,
+            Callback<closeInfoMutex, globalCloseInfoConsumer, globalCloseInfoMethod>::closeMethod,
             ConnectionClosedNotificationId
         );
     };
@@ -1295,6 +1473,7 @@ extern "C" {
             EOS_ProductUserId_ToString(Options->RemoteUserId, remoteUserID, &size);
             CreateIKCPFor(localUserID, remoteUserID, std::launder(const_cast<char*>(Options->SocketId->SocketName)), 0);
             EOS_EResult result = EOS_P2P_AcceptConnection(Handle, Options);
+
             if (result != EOS_EResult::EOS_Success) {
                 RemoveIKCPFor(localUserID, remoteUserID, std::launder(const_cast<char*>(Options->SocketId->SocketName)), 0);
             }
@@ -1407,10 +1586,14 @@ extern "C" {
         env->DeleteLocalRef(clz);
     };
 
-    JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_shutdownNow(JNIEnv*, jclass) {
-        bool expected = false;
-        if (isShutdown.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-            EOS_Shutdown();
-        }
+    JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_teardown(JNIEnv *, jclass) {
+        EOSQueue.Run([]() {
+            Teardown();
+            return nullptr;
+        });
     };
+
+    JNIEXPORT void JNICALL JNI_OnUnload(JavaVM*, void*) {
+        Teardown();
+    }
 }

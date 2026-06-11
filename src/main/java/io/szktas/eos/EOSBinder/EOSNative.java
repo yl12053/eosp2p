@@ -153,6 +153,7 @@ public class EOSNative {
             init(
                     () -> {
                         IsEnabled = true;
+                        Runtime.getRuntime().addShutdownHook(new Thread(EOSNative::teardown, "EOS-Teardown"));
                         LOGGER.info("Enable, setting log");
                         SetLogging((level, s) -> {
                             if (level < 300) {
@@ -195,7 +196,6 @@ public class EOSNative {
             LOGGER.error("Unsupported Operation System: {}", SystemUtils.OS_NAME);
             reasonProcess = Reason.UNSUPPORTED_OS;
         } finally {
-            LOGGER.info("Enter finally with {} {}", isEnabledProcess, reasonProcess);
             IsEnabled = IsEnabled || isEnabledProcess;
             reason = reasonProcess;
         }
@@ -338,7 +338,7 @@ public class EOSNative {
     public static native void subscribeInterruptConnectionRequestHandler(TriConsumer<String, String, String> consumer);
     public static native boolean subscribeInterruptConnectionRequest(String puid, String socketname);
 
-    public static native void subscribeCloseConnectionRequestHandler(TriConsumer<String, String, String> consumer);
+    public static native void subscribeCloseConnectionRequestHandler(QuadConsumer<String, String, String, String> consumer);
     public static native boolean subscribeCloseConnectionRequest(String puid, String socketname);
 
     public static native String connectOrAccept(String localPUID, String remotePUID, String SocketID);
@@ -349,7 +349,5 @@ public class EOSNative {
 
     public static native void registerReceiveCallbackFor(String localPUID, PacketConsumer resultConsumer);
 
-    public static native void shutdownNow();
-
-    public static native void setGenericLog(BiConsumer<String, String> log);
+    public static native void teardown();
 }

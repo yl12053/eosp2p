@@ -6,15 +6,17 @@
   "refmap": "mixins.eosp2p.refmap.json",
   "mixins": [
     "MixinConnection",
-    "MixinServerAddress",
     "MixinServerConnectionListener",
     "PublishCommandMixin"
   ],
   "client": [
     "MixinMinecraft",
-    "MixinServerNameResolver"
+    "MixinServerNameResolver",
+    "MixinServerAddress"
   ],
-  "server": [],
+  "server": [
+    "MixinDedicatedServer"
+  ],
   "injectors": {
     "defaultRequire": 1
   },

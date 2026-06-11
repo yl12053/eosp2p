@@ -7,3 +7,9 @@
 [submodule "src/main/cpp/Src/fmt"]
 	path = src/main/cpp/Src/fmt
 	url = https://github.com/fmtlib/fmt.git
+[submodule "src/main/cpp/Src/magic_enum"]
+	path = src/main/cpp/Src/magic_enum
+	url = https://github.com/Neargye/magic_enum.git
+[submodule "src/main/cpp/Src/cppcrc"]
+	path = src/main/cpp/Src/cppcrc
+	url = https://github.com/DarrenLevine/cppcrc.git

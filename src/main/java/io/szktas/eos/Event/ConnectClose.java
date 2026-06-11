@@ -14,4 +14,5 @@ public class ConnectClose extends Event {
     public final String SelfPUID;
     public final String RemotePUID;
     @Nullable public final String SocketName;
+    @Nullable public final String reason;
 }
