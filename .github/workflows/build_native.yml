@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           apt-get update
-          apt-get install -y git
+          apt-get install -y git curl ca-certificates unzip tar
 
       - uses: actions/checkout@v6
         with:
