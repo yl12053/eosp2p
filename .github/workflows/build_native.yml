@@ -61,7 +61,7 @@ jobs:
           export "zigkey=${{ case(runner.arch == 'X64', 'x86_64', 'aarch64') }}" >> $GITHUB_ENV
           export "march=${{ case(runner.arch == 'X64', '-march=x86_64_v2', '') }}" >> $GITHUB_ENV
           export "arch=${{ case(runner.arch == 'X64', 'x64', 'arm64') }}" >> $GITHUB_ENV
-          export "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUV_ENV
+          export "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUB_ENV
 
       - name: Install Compilers in Linux
         if: runner.os == 'Linux'
