@@ -28,7 +28,7 @@ jobs:
         os: [ ubuntu-latest, macos-latest, ubuntu-24.04-arm ]
 
     env:
-      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic') }}
+      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '') }}
       zigkey: ${{ case(runner.arch == 'X64', 'x86_64', 'aarch64') }}"
       march: ${{ case(runner.arch == 'X64', '-march=x86_64_v2', '') }}"
       arch: ${{ case(runner.arch == 'X64', 'x64', 'arm64') }}"
