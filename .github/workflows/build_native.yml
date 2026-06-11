@@ -37,6 +37,12 @@ jobs:
 
 
     steps:
+      - name: Install Git
+        if: runner.os == 'Linux'
+        run: |
+          apt-get update
+          apt-get install -y git
+
       - uses: actions/checkout@v6
         with:
           submodules: 'recursive'
@@ -60,7 +66,6 @@ jobs:
       - name: Install Compilers in Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
           sudo apt install clang lld llvm
 
       - name: Install Cross-Compiler for Windows in Linux
