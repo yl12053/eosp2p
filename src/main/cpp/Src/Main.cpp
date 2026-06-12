@@ -7,6 +7,10 @@
 
 #include <jni.h>
 
+#ifdef __ANDROID__
+#include <Android/eos_Android.h>
+#endif
+
 #include <eos_logging.h>
 #include <eos_sdk.h>
 #include <eos_connect.h>
@@ -1079,6 +1083,14 @@ extern "C" {
 
             EOSSdkOptions.ProductName = copyname;
             EOSSdkOptions.ProductVersion = copyver;
+
+            #ifdef __ANDROID__
+            EOS_Android_InitializeOptions EOSAndroidOptions = {};
+            EOSAndroidOptions.ApiVersion = EOS_ANDROID_INITIALIZEOPTIONS_API_LATEST;
+            EOSAndroidOptions.OptionalInternalDirectory = nullptr;
+            EOSAndroidOptions.OptionalExternalDirectory = nullptr;
+            EOSSdkOptions.SystemInitializeOptions = &EOSAndroidOptions;
+            #endif
 
             EOS_EResult InitResult = EOS_Initialize(&EOSSdkOptions);
             delete[] copyname;
