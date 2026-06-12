@@ -154,7 +154,7 @@ public class EOSNative {
                         } catch (IOException e) {
                             if (!(e instanceof FileNotFoundException)) throw e;
                         }
-                        System.load(loadLibraryFromClass("/EOSSDK-A" + (isArm64 ? "ARM64" : "X64") + ".so", Main.MODID + "_eos.so"));
+                        System.load(loadLibraryFromClass("/libEOSSDK-A" + (isArm64 ? "ARM64" : "X64") + ".so", Main.MODID + "_eos.so"));
                         System.load(loadLibraryFromClass("/META-INF/binder/android" + (isArm64 ? "arm64" : "x64") + ".so"));
                     }
                 } else {
