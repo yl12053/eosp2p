@@ -164,7 +164,12 @@ static void SetThreadToHighPriority() {
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 #elif defined(__APPLE__) || defined(__linux__)
-    setpriority(PRIO_PROCESS, 0, -5);
+#ifdef __ANDROID__
+#define PRIORITY_AS -10
+#else
+#define PRIORITY_AS -5
+#endif
+    setpriority(PRIO_PROCESS, 0, PRIORITY_AS);
 #endif
 }
 
@@ -1522,6 +1527,7 @@ extern "C" {
             delete[] remotePUIDs;
             return env->NewStringUTF("--remote_not_valid");
         }
+
         if (EOS_ProductUserId_IsValid(localPUID) == EOS_FALSE) {
             if (socketIDs != nullptr) {
                 delete[] socketIDs;

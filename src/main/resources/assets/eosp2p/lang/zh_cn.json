@@ -31,5 +31,9 @@
   "gui.eosp2p.library_not_found": "库文件不存在或者已经损毁。\n建议重新下载EOSP2P",
   "gui.eosp2p.init_failed": "Epic在线服务初始化失败\n本次游戏中EOSP2P将不可用",
   "gui.eosp2p.puid_fail": "PUID获取失败\n本次游戏中EOSP2P将不可用",
-  "gui.eosp2p.puid_fail_mac": "%s\n\n注: 在MacOS上运行EOSP2P有一个已知问题.\n请打开'钥匙串访问', 打开登录钥匙串, 找到并打开'com.epicgames.sdk.connect.access_token' (如果存在多个，则选取最近创建的), 在弹出的窗口中选择访问控制页 并勾选'允许所有应用程序访问此项目'作为临时修复"
+  "gui.eosp2p.puid_fail_mac": "%s\n\n注: 在MacOS上运行EOSP2P有一个已知问题.\n请打开'钥匙串访问', 打开登录钥匙串, 找到并打开'com.epicgames.sdk.connect.access_token' (如果存在多个，则选取最近创建的), 在弹出的窗口中选择访问控制页 并勾选'允许所有应用程序访问此项目'作为临时修复",
+  "error.eosp2p.connection_corrupted_unexpected": "连接中断(未知错误)",
+  "error.eosp2p.len_less_than_zero": "包格式错误: 长度小于0",
+  "error.eosp2p.seg_failed": "包段发送失败",
+  "error.eosp2p.sent_unknown_error": "包发送失败(未知错误)"
 }
