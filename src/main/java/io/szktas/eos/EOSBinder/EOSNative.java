@@ -16,9 +16,11 @@ import org.slf4j.MarkerFactory;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.Base64;
@@ -133,17 +135,25 @@ public class EOSNative {
                     );
                     throw new UnsupportedArch();
                 }
-                LOGGER.debug("Vendor: {}", getProperty("java.vendor"));
-                if (getProperty("java.vendor").contains("Android")) {
-                    System.load(loadLibraryFromClass("/EOSSDK-A" + (isArm64 ? "ARM64" : "X64") + ".so", Main.MODID + "_eos.so"));
-                    System.load(loadLibraryFromClass("/META-INF/binder/android" + (isArm64 ? "arm64" : "x64") + ".so"));
-                } else if (SystemUtils.IS_OS_WINDOWS) {
+                if (SystemUtils.IS_OS_WINDOWS) {
                     // System.load(loadLibraryFromClass("/" + (isArm64 ? "arm64" : "x64") + "/xaudio2_9redist.dll"));
                     System.load(loadLibraryFromClass("/EOSSDK-Win64-Shipping" + (isArm64 ? "arm64" : "") + ".dll", Main.MODID + "_eos.dll"));
                     System.load(loadLibraryFromClass("/META-INF/binder/win" + (isArm64 ? "arm64" : "x64") + ".dll"));
                 } else if (SystemUtils.IS_OS_LINUX) {
-                    System.load(loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so"));
-                    System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
+                    String t1 = null;
+                    try {
+                        System.load((t1 = loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so")));
+                        System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
+                    } catch (UnsatisfiedLinkError e1) {
+                        LOGGER.error("Failed to load GLIBC version, consider android");
+                        try {
+                            if (t1 != null) Files.delete(Paths.get(t1));
+                        } catch (IOException e) {
+                            if (!(e instanceof FileNotFoundException)) throw e;
+                        }
+                        System.load(loadLibraryFromClass("/EOSSDK-A" + (isArm64 ? "ARM64" : "X64") + ".so", Main.MODID + "_eos.so"));
+                        System.load(loadLibraryFromClass("/META-INF/binder/android" + (isArm64 ? "arm64" : "x64") + ".so"));
+                    }
                 } else {
                     SET_ERROR_SCREEN.set(
                             Component.translatable("command.eosp2p.unsupported_os"),
