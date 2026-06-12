@@ -123,7 +123,7 @@ jobs:
         if: runner.os == 'Linux' && matrix.build == 'android'
         run: |
           yes | sdkmanager --licenses
-          sdkmanager "ndk;27.0.12077973"
+          yes | sdkmanager "ndk;27.0.12077973"
           export NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/" >> $GITHUB_PATH
