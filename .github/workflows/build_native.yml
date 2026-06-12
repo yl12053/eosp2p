@@ -26,6 +26,21 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
+        include:
+          - os: ubuntu-latest
+            build: linux
+          - os: ubuntu-latest
+            build: win
+            compre: x86_64
+            spec: -march=x86-64-v2
+            subpad: ''
+            fnpad: 'x64'
+          - os: ubuntu-latest
+            build: win
+            compre: aarch64
+            spec: --target=aarch-w64-mingw32
+            subpad: 'arm64'
+            fnpad: 'arm64'
 
     env:
       DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '') }}
@@ -54,7 +69,7 @@ jobs:
         run: unzip EOSSDK/out.zip -d EOSSDK
 
       - name: Initialize Variables
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.build == 'linux'
         run: |
           rarch="${{ runner.arch }}"
           echo "zigkey=${{ case(runner.arch == 'X64', 'x86_64', 'aarch64') }}" >> $GITHUB_ENV
@@ -63,14 +78,14 @@ jobs:
           echo "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUB_ENV
 
       - name: Install Compilers in Linux
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.build == 'linux'
         run: |
           curl https://ziglang.org/builds/zig-${{ env.zigkey }}-linux-0.17.0-dev.813+2153f8143.tar.xz --output zig.tar.xz
           tar -Jxvf zig.tar.xz
           echo "zig-${{ env.zigkey }}-linux-0.17.0-dev.813+2153f8143" >> $GITHUB_PATH
 
       - name: Install Cross-Compiler for Windows in Linux
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+        if: runner.os == 'Linux' && matrix.build == 'win'
         run: |
           curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/20260602/llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64.tar.xz" --output out.tar.xz
           tar -Jxvf out.tar.xz
@@ -94,19 +109,18 @@ jobs:
           
 
       - name: Compile Linux
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.build == 'linux'
         run: |
           zig c++ --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -c -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o linux_main.o
           zig cc --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -static-libgcc -static-libstdc++ -fPIC -shared -c -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linux_c.o
           zig c++ --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -fPIC -shared -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping linux_c.o linux_main.o -o linux${{ env.arch }}.so
 
       - name: Compile Win
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+        if: runner.os == 'Linux' && matrix.build == 'win'
         run: |
-          x86_64-w64-mingw32-clang++ -static -O3 -march=x86-64-v2 -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o mainx64.dll
-          aarch64-w64-mingw32-clang++ --target=aarch64-w64-mingw32 -fuse-ld=lld -static -O3 -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shippingarm64.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o mainarm64.dll
+          ${{ matrix.compre }}-w64-mingw32-clang++ -fuse-ld=lld -static -O3 ${{ matrix.spec }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping${{ matrix.subpad }}.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o main.dll
 
-      - name: Compile (MacOS)
+      - name: Compile MacOS
         if: runner.os == 'macOS'
         run: |
           export MACOSX_DEPLOYMENT_TARGET=10.15
@@ -117,40 +131,36 @@ jobs:
           
 
       - name: Patch windows
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+        if: runner.os == 'Linux' && matrix.build == 'win'
         run: |
-          python3 ${{ github.workspace }}/src/main/python/edit_import_table.py mainx64.dll winx64.dll EOSSDK-Win64-Shipping.dll ${{ env.name }}_eos.dll
-          python3 ${{ github.workspace }}/src/main/python/edit_import_table.py mainarm64.dll winarm64.dll EOSSDK-Win64-Shippingarm64.dll ${{ env.name }}_eos.dll
+          python3 ${{ github.workspace }}/src/main/python/edit_import_table.py main.dll win${{ matrix.fnpad }}.dll EOSSDK-Win64-Shipping${{ matrix.subpad }}.dll ${{ env.name }}_eos.dll
 
       - name: Patch Linux
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.build == 'linux'
         run: patchelf --replace-needed libEOSSDK-Linux${{ env.archpad }}-Shipping.so ${{ env.name }}_eos.so linux${{ env.arch }}.so
 
-      - name: Patch (MacOS)
+      - name: Patch MacOS
         if: runner.os == 'macOS'
         run: |
           install_name_tool -change @rpath/libEOSSDK-Mac-Shipping.dylib @rpath/${{ env.name }}_eos.dylib mac.dylib
           codesign --force --sign - --options=runtime --deep mac.dylib
           install_name_tool -id @rpath/${{ env.name }}_eos.dylib EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
 
-      - name: Upload Artifact (x64)
+      - name: Upload Artifact (Windows)
         uses: actions/upload-artifact@v7
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+        if: runner.os == 'Linux' && matrix.build == 'win'
         with:
-          name: linux-and-win-x64
+          name: win-${{ matrix.fnpad }}
           path: |
-            linuxx64.so
-            linuxarm64.so
-            winx64.dll
-            winarm64.dll
+            win${{ matrix.fnpad }}.dll
 
-      - name: Upload Artifact (arm64)
+      - name: Upload Artifact (Linux)
         uses: actions/upload-artifact@v7
-        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        if: runner.os == 'Linux' && matrix.build == 'linux'
         with:
-          name: linux-arm64
+          name: linux-${{ env.arch }}
           path: |
-            linuxarm64.so
+            linux${{ env.arch }}.so
 
       - name: Upload Artifact (MacOS)
         uses: actions/upload-artifact@v7
