@@ -39,7 +39,7 @@ jobs:
           - os: ubuntu-latest
             build: win
             compre: aarch64
-            spec: --target=aarch-w64-mingw32
+            spec: --target=aarch64-w64-mingw32
             subpad: 'arm64'
             fnpad: 'arm64'
           - os: macos-latest
