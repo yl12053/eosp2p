@@ -210,7 +210,8 @@ jobs:
       - name: Strip (Linux)
         if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
         run: |
-          apt-get install llvm
+          apt-get update
+          apt-get -y install llvm 
           llvm-strip --strip-unneeded ${{ matrix.build }}${{ env.arch }}.so
           llvm-strip --strip-unneeded libEOSSDK-${{ case(matrix.build == 'linux', format('Linux{0}-Shipping', env.archpad), format('A{0}', env.arch)) }}.so
 
