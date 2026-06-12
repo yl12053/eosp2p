@@ -140,23 +140,8 @@ public class EOSNative {
                     System.load(loadLibraryFromClass("/EOSSDK-Win64-Shipping" + (isArm64 ? "arm64" : "") + ".dll", Main.MODID + "_eos.dll"));
                     System.load(loadLibraryFromClass("/META-INF/binder/win" + (isArm64 ? "arm64" : "x64") + ".dll"));
                 } else if (SystemUtils.IS_OS_LINUX) {
-                    String t1 = null;
-                    boolean partialSuccess = false;
-                    try {
-                        System.load((t1 = loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so")));
-                        partialSuccess = true;
-                        System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
-                    } catch (UnsatisfiedLinkError e1) {
-                        if (partialSuccess) throw e1;
-                        LOGGER.error("Failed to load GLIBC version, consider android");
-                        try {
-                            if (t1 != null) Files.delete(Paths.get(t1));
-                        } catch (IOException e) {
-                            if (!(e instanceof FileNotFoundException)) throw e;
-                        }
-                        System.load(loadLibraryFromClass("/libEOSSDK-A" + (isArm64 ? "arm64" : "x64") + ".so", Main.MODID + "_eos.so"));
-                        System.load(loadLibraryFromClass("/META-INF/binder/android" + (isArm64 ? "arm64" : "x64") + ".so"));
-                    }
+                    System.load(loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so"));
+                    System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
                 } else {
                     SET_ERROR_SCREEN.set(
                             Component.translatable("command.eosp2p.unsupported_os"),
@@ -202,7 +187,7 @@ public class EOSNative {
             LOGGER.error("Failed to load library", e);
             SET_ERROR_SCREEN.set(
                     Component.translatable("command.eosp2p.library_corrupted"),
-                    Component.translatable("gui.eosp2p.library_not_found"),
+                    Component.translatable("gui.eosp2p.library_" + (SystemUtils.IS_OS_LINUX ? "corrupted_linux" : "not_found")),
                     Component.translatable("gui.eosp2p.dismiss_ever"),
                     Component.translatable("gui.eosp2p.dismiss")
             );

@@ -33,6 +33,7 @@
   "gui.eosp2p.dismiss_ever": "Don't show again",
   "gui.eosp2p.dismiss": "Dismiss",
   "gui.eosp2p.library_not_found": "Library bundled with this mod not found or corrupted. \nPlease consider to re-download EOSP2P",
+  "gui.eosp2p.library_corrupted_linux": "Library bundled with this mod is corrupted or could not load. \nIt may mean that GLIBC is missing in your computer (typically on a Musl C linux distribution or android that is using Bionic).\nFor Musl C user, consider using gcompat to launch Minecraft.\nAndroid support will not available in a short period of time.",
   "gui.eosp2p.init_failed": "The initialization of Epic Online Service has failed. \nEOSP2P cannot function on this instance",
   "gui.eosp2p.puid_fail": "Failed to obtain product UID. \nEOSP2P cannot function on this instance.",
   "gui.eosp2p.puid_fail_mac": "%s\n\nNote: There are known issues in obtaining Product UID with MacOS.\nPlease open 'Keychain Access', navigate to the Login keychain, select item with name 'com.epicgames.sdk.connect.access_token' (if multiple instance occur, choose the most recent one), navigate to the Access Control tab and select 'Allow all applications to access this item' as a temporary work-around fix."

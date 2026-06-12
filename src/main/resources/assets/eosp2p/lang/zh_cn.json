@@ -29,6 +29,7 @@
   "gui.eosp2p.dismiss_ever": "关闭并不再显示",
   "gui.eosp2p.dismiss": "关闭",
   "gui.eosp2p.library_not_found": "库文件不存在或者已经损毁。\n建议重新下载EOSP2P",
+  "gui.eosp2p.library_corrupted_linux": "库文件加载失败或已经损毁。 \n可能因为这台电脑上没有GLIBC (特别是对于默认包含Musl C的linux发行版或者包含Bionic的Android)。\n对于Musl C玩家, 请考虑使用gcompat启动Minecraft。\n短时间内将不会有对Android的支援",
   "gui.eosp2p.init_failed": "Epic在线服务初始化失败\n本次游戏中EOSP2P将不可用",
   "gui.eosp2p.puid_fail": "PUID获取失败\n本次游戏中EOSP2P将不可用",
   "gui.eosp2p.puid_fail_mac": "%s\n\n注: 在MacOS上运行EOSP2P有一个已知问题.\n请打开'钥匙串访问', 打开登录钥匙串, 找到并打开'com.epicgames.sdk.connect.access_token' (如果存在多个，则选取最近创建的), 在弹出的窗口中选择访问控制页 并勾选'允许所有应用程序访问此项目'作为临时修复",

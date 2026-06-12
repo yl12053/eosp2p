@@ -42,12 +42,6 @@ jobs:
             spec: --target=aarch64-w64-mingw32
             subpad: arm64
             fnpad: arm64
-          - os: ubuntu-latest
-            build: android
-            compre: aarch64
-          - os: ubuntu-latest
-            build: android
-            compre: x86_64
           - os: macos-latest
 
     env:
@@ -69,16 +63,10 @@ jobs:
       - name: Download SDK
         run: |
           mkdir -p EOSSDK
-          curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=${{ case(matrix.build == 'android', '871', '870') }}&archive_type=${{ case(matrix.build == 'android', 'android', 'sdk') }}" --output EOSSDK/out.zip
+          curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=870&archive_type=sdk" --output EOSSDK/out.zip
 
       - name: Unzip SDK
         run: unzip EOSSDK/out.zip -d EOSSDK
-
-      - name: Further unzip SDK
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          mkdir -p ELIB
-          unzip EOSSDK/SDK/Bin/Android/static-stdc++/aar/eossdk-StaticSTDC-release.aar -d ELIB 
 
       - name: Initialize Variables
         if: runner.os == 'Linux' && matrix.build == 'linux'
@@ -88,12 +76,6 @@ jobs:
           echo "march=${{ case(runner.arch == 'X64', '-march=x86_64_v2', '') }}" >> $GITHUB_ENV
           echo "arch=${rarch,,}" >> $GITHUB_ENV
           echo "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUB_ENV
-
-      - name: Initialize Variables
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          echo "lpad=${{ case(matrix.compre == 'x86_64', 'x86_64', 'arm64-v8a') }}" >> $GITHUB_ENV
-          echo "arch=${{ case(matrix.compre == 'x86_64', 'x64', 'arm64') }}" >> $GITHUB_ENV
 
       - name: Install Compilers in Linux
         if: runner.os == 'Linux' && matrix.build == 'linux'
@@ -108,29 +90,6 @@ jobs:
           curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/20260602/llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64.tar.xz" --output out.tar.xz
           tar -Jxvf out.tar.xz
           echo "llvm-mingw-20260602-msvcrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
-
-      - name: Download Command Line Tools for Android in Linux
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          mkdir -p android-sdk/cmdline-tools
-          curl -L https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip --output clt.zip
-          unzip clt.zip
-          mv cmdline-tools android-sdk/cmdline-tools/latest
-          echo "ANDROID_HOME=android-sdk" >> $GITHUB_ENV
-          echo "android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          
-      - name: Install NDK in Linux
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          (yes || true) | sdkmanager --licenses
-          (yes || true) | sdkmanager "ndk;27.0.12077973"
-          export NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973
-          echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
-          echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/" >> $GITHUB_PATH
-          echo "SYSROOT=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-          echo "NDK_CPP_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1" >> $GITHUB_ENV
-          echo "NDK_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include" >> $GITHUB_ENV
-          echo "NDK_LIB=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.compre }}-linux-android/24" >> $GITHUB_ENV
 
       - uses: actions/cache@v5
         with:
@@ -154,13 +113,6 @@ jobs:
           zig c++ --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -Wl,--as-needed -pthread -fPIC -shared -c -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o linux_main.o
           zig cc --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -static-libgcc -static-libstdc++ -Wl,--as-needed -pthread -fPIC -shared -c -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o linux_c.o
           zig c++ --target=${{ env.zigkey }}-linux-gnu.2.31 -O3 ${{ env.march }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/linux" -std=c++20 -static-libgcc -static-libstdc++ -Wl,--as-needed -pthread -fPIC -shared -L./EOSSDK/SDK/Bin -lEOSSDK-Linux${{ env.archpad }}-Shipping linux_c.o linux_main.o -o linux${{ env.arch }}.so
-
-      - name: Compile Android
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          clang++ --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_static -stdlib=libc++ -static-libstdc++ -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o android_main.o
-          clang --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_static -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o android_c.o
-          clang++ --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_static -stdlib=libc++ -static-libstdc++ -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed android_main.o android_c.o -o android${{ env.arch }}.so -pthread -fPIC -shared -LELIB/jni/${{ env.lpad }} -lEOSSDK -landroid -llog -lm -lc -ldl
 
       - name: Compile Win
         if: runner.os == 'Linux' && matrix.build == 'win'
@@ -188,13 +140,6 @@ jobs:
           patchelf --replace-needed libEOSSDK-Linux${{ env.archpad }}-Shipping.so ${{ env.name }}_eos.so linux${{ env.arch }}.so
           cp EOSSDK/SDK/Bin/libEOSSDK-Linux${{ env.archpad }}-Shipping.so .
 
-      - name: Patch Android
-        if: runner.os == 'Linux' && matrix.build == 'android'
-        run: |
-          patchelf --set-soname ${{ env.name }}_eos.so ELIB/jni/${{ env.lpad }}/libEOSSDK.so
-          patchelf --replace-needed libEOSSDK.so ${{ env.name }}_eos.so android${{ env.arch }}.so
-          cp ELIB/jni/${{ env.lpad }}/libEOSSDK.so libEOSSDK-A${{ env.arch }}.so
-
       - name: Patch MacOS
         if: runner.os == 'macOS'
         run: |
@@ -210,14 +155,13 @@ jobs:
           path: |
             win${{ matrix.fnpad }}.dll
 
-      - name: Upload Artifact (Linux / Android)
+      - name: Upload Artifact (Linux)
         uses: actions/upload-artifact@v7
         if: runner.os == 'Linux' && matrix.build != 'win'
         with:
           name: ${{ matrix.build }}-${{ env.arch }}
           path: |
             ${{ matrix.build }}${{ env.arch }}.so
-            libEOSSDK-A${{ env.arch }}.so
             libEOSSDK-Linux${{ env.archpad }}-Shipping.so
 
       - name: Upload Artifact (MacOS)

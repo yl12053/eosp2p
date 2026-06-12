@@ -7,10 +7,6 @@
 
 #include <jni.h>
 
-#ifdef __ANDROID__
-#include <Android/eos_Android.h>
-#endif
-
 #include <eos_logging.h>
 #include <eos_sdk.h>
 #include <eos_connect.h>
@@ -45,13 +41,8 @@ extern "C" {
 #include "kcp/ikcp.h"
 }
 
-#ifdef __ANDROID__
-#define JNIV JNI_VERSION_1_6
-#define WRAP(p) p
-#else
 #define JNIV JNI_VERSION_1_8
 #define WRAP(p) reinterpret_cast<void**>(p)
-#endif
 
 class TaskQueue {
 public:
@@ -176,12 +167,7 @@ static void SetThreadToHighPriority() {
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 #elif defined(__APPLE__) || defined(__linux__)
-#ifdef __ANDROID__
-#define PRIORITY_AS -10
-#else
-#define PRIORITY_AS -5
-#endif
-    setpriority(PRIO_PROCESS, 0, PRIORITY_AS);
+    setpriority(PRIO_PROCESS, -5, PRIORITY_AS);
 #endif
 }
 
@@ -1083,14 +1069,6 @@ extern "C" {
 
             EOSSdkOptions.ProductName = copyname;
             EOSSdkOptions.ProductVersion = copyver;
-
-            #ifdef __ANDROID__
-            EOS_Android_InitializeOptions EOSAndroidOptions = {};
-            EOSAndroidOptions.ApiVersion = EOS_ANDROID_INITIALIZEOPTIONS_API_LATEST;
-            EOSAndroidOptions.OptionalInternalDirectory = nullptr;
-            EOSAndroidOptions.OptionalExternalDirectory = nullptr;
-            EOSSdkOptions.SystemInitializeOptions = &EOSAndroidOptions;
-            #endif
 
             EOS_EResult InitResult = EOS_Initialize(&EOSSdkOptions);
             delete[] copyname;
