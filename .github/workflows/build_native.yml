@@ -210,8 +210,8 @@ jobs:
       - name: Install Strip Utils in Linux
         if: runner.os == 'Linux' && matrix.build == 'linux' && !inputs.debug
         run: |
-          apt-get update
-          apt-get -y install llvm 
+          sudo apt-get update
+          sudo apt-get -y install llvm 
 
       - name: Strip (Linux)
         if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
