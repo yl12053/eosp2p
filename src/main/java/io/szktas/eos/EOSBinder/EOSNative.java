@@ -141,10 +141,13 @@ public class EOSNative {
                     System.load(loadLibraryFromClass("/META-INF/binder/win" + (isArm64 ? "arm64" : "x64") + ".dll"));
                 } else if (SystemUtils.IS_OS_LINUX) {
                     String t1 = null;
+                    boolean partialSuccess = false;
                     try {
                         System.load((t1 = loadLibraryFromClass("/libEOSSDK-Linux" + (isArm64 ? "Arm64" : "") + "-Shipping.so", Main.MODID + "_eos.so")));
+                        partialSuccess = true;
                         System.load(loadLibraryFromClass("/META-INF/binder/linux" + (isArm64 ? "arm64" : "x64") + ".so"));
                     } catch (UnsatisfiedLinkError e1) {
+                        if (partialSuccess) throw e1;
                         LOGGER.error("Failed to load GLIBC version, consider android");
                         try {
                             if (t1 != null) Files.delete(Paths.get(t1));
