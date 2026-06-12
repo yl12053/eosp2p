@@ -41,6 +41,14 @@ extern "C" {
 #include "kcp/ikcp.h"
 }
 
+#ifdef __ANDROID__
+#define JNIV JNI_VERSION_1_6
+#define WRAP(p) p
+#else
+#define JNIV JNI_VERSION_1_8
+#define WRAP(p) reinterpret_cast<void**>(p)
+#endif
+
 class TaskQueue {
 public:
     void Push(std::function<void()> task) {
@@ -194,10 +202,10 @@ private:
 class ScopedEnv {
 public:
     ScopedEnv(): jvm(globalJVM), env(nullptr), shouldDetach(false) {
-        jint result = jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
+        jint result = jvm->GetEnv(reinterpret_cast<void**>(&env), JNIV);
 
         if (result == JNI_EDETACHED) {
-            if (jvm->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) == JNI_OK) {
+            if (jvm->AttachCurrentThread(WRAP(&env), nullptr) == JNI_OK) {
                 shouldDetach = true;
             } else {
                 env = nullptr;
