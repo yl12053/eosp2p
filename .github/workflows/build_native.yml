@@ -127,6 +127,7 @@ jobs:
           export NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/" >> $GITHUB_PATH
+          echo "SYSROOT=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
           echo "NDK_CPP_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1" >> $GITHUB_ENV
           echo "NDK_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include" >> $GITHUB_ENV
           echo "NDK_LIB=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.compre }}-linux-android/24" >> $GITHUB_ENV
@@ -157,9 +158,9 @@ jobs:
       - name: Compile Android
         if: runner.os == 'Linux' && matrix.build == 'android'
         run: |
-          clang++ -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -L${{ env.NDK_LIB }} -I${{ env.NDK_INCLUDE }} -I${{ env.NDK_INCLUDE }}/${{ matrix.compre }}-linux-android -I${{ env.NDK_CPP_INCLUDE }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o android_main.o
-          clang -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -L${{ env.NDK_LIB }} -I${{ env.NDK_INCLUDE }} -I${{ env.NDK_INCLUDE }}/${{ matrix.compre }}-linux-android -I${{ env.NDK_CPP_INCLUDE }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o android_c.o
-          clang++ -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed android_main.o android_c.o -o android${{ env.arch }}.so -pthread -fPIC -shared -LELIB/jni/${{ env.lpad }} -L${{ env.NDK_LIB }} -I${{ env.NDK_INCLUDE }} -I${{ env.NDK_INCLUDE }}/${{ matrix.compre }}-linux-android -I${{ env.NDK_CPP_INCLUDE }} -lEOSSDK -landroid -llog -lm -lc -ldl
+          clang++ --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/Main.cpp -o android_main.o
+          clang --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -Wl,--as-needed -pthread -fPIC -landroid -llog -lm -lc -ldl -shared -c -LELIB/jni/${{ env.lpad }} -lEOSSDK ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o android_c.o
+          clang++ --sysroot=${{ env.SYSROOT }} -DANDROID_STL=c++_shared -DANDROID -D__ANDROID__ -D_GNU_SOURCE -target ${{ matrix.compre }}-linux-android24 -O3 -stdlib=libc++ -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -std=c++20 -Wl,--as-needed android_main.o android_c.o -o android${{ env.arch }}.so -pthread -fPIC -shared -LELIB/jni/${{ env.lpad }} -lEOSSDK -landroid -llog -lm -lc -ldl
 
       - name: Compile Win
         if: runner.os == 'Linux' && matrix.build == 'win'
