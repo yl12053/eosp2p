@@ -51,7 +51,7 @@ jobs:
           - os: macos-latest
 
     env:
-      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '-fvisibility=hidden') }}
+      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '-fvisibility=hidden -fvisibility-inlines-hidden') }}
 
     steps:
       - uses: actions/checkout@v6
