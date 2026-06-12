@@ -118,7 +118,7 @@ jobs:
       - name: Compile Win
         if: runner.os == 'Linux' && matrix.build == 'win'
         run: |
-          ${{ matrix.compre }}-w64-mingw32-clang++ -fuse-ld=lld -static -O3 ${{ matrix.spec }} -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping${{ matrix.subpad }}.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o main.dll
+          ${{ matrix.compre }}-w64-mingw32-clang++ ${{ matrix.spec }} -fuse-ld=lld -static -O3 -fno-plt -ffunction-sections -fdata-sections -fno-rtti ${{ env.DO_DEBUG_ARG }} -IEOSSDK/SDK/Include -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include" -I"${{ github.workspace }}/src/main/cpp/Src/jni-headers/versions/17/include/win32" -std=c++20 -static-libgcc -static-libstdc++ -static -shared -L./EOSSDK/SDK/Bin -l:EOSSDK-Win64-Shipping${{ matrix.subpad }}.dll ${{ github.workspace }}/src/main/cpp/Src/Main.cpp ${{ github.workspace }}/src/main/cpp/Src/kcp/ikcp.c -o main.dll
 
       - name: Compile MacOS
         if: runner.os == 'macOS'
