@@ -55,13 +55,20 @@ jobs:
       - name: Download SDK
         run: |
           mkdir -p EOSSDK
+          mkdir -p AEOSSDK
           curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=870&archive_type=sdk" --output EOSSDK/out.zip
+          curl -L "https://onlineservices.epicgames.com/api/cosmos/sdk/download?archive_id=871&archive_type=android" --output AEOSSDK/out.zip
           unzip EOSSDK/out.zip -d EOSSDK
+          unzip AEOSSDK/out.zip -d AEOSSDK
+          mkdir -p ELIB
+          unzip AEOSSDK/SDK/Bin/Android/static-stdc++/aar/eossdk-StaticSTDC-release.aar -d ELIB
 
       - name: Copy SDK
         run: |
           mkdir -p ${{ github.workspace }}/src/main/cpp/Bin
           cp EOSSDK/SDK/Bin/*.* ${{ github.workspace }}/src/main/cpp/Bin
+          cp ELIB/jni/arm64-v8a/libEOSSDK.so libEOSSDK-AARM64.so
+          cp ELIB/jni/x86_64/libEOSSDK.so libEOSSDK-AX64.so
           rm -f ${{ github.workspace }}/src/main/cpp/Bin/libEOSSDK-Mac-Shipping.dylib
           mv ${{ github.workspace }}/src/main/resources/META-INF/binder/libEOSSDK-Mac-Shipping.dylib ${{ github.workspace }}/src/main/cpp/Bin/
 

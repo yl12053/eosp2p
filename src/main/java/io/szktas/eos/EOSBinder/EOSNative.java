@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static io.szktas.eos.Main.LOGGER;
+import static java.lang.System.getProperty;
 
 @Slf4j
 public class EOSNative {
@@ -132,7 +133,11 @@ public class EOSNative {
                     );
                     throw new UnsupportedArch();
                 }
-                if (SystemUtils.IS_OS_WINDOWS) {
+                LOGGER.debug("Vendor: {}", getProperty("java.vendor"));
+                if (getProperty("java.vendor").contains("Android")) {
+                    System.load(loadLibraryFromClass("/EOSSDK-A" + (isArm64 ? "ARM64" : "X64") + ".so", Main.MODID + "_eos.so"));
+                    System.load(loadLibraryFromClass("/META-INF/binder/android" + (isArm64 ? "arm64" : "x64") + ".so"));
+                } else if (SystemUtils.IS_OS_WINDOWS) {
                     // System.load(loadLibraryFromClass("/" + (isArm64 ? "arm64" : "x64") + "/xaudio2_9redist.dll"));
                     System.load(loadLibraryFromClass("/EOSSDK-Win64-Shipping" + (isArm64 ? "arm64" : "") + ".dll", Main.MODID + "_eos.dll"));
                     System.load(loadLibraryFromClass("/META-INF/binder/win" + (isArm64 ? "arm64" : "x64") + ".dll"));
@@ -210,7 +215,7 @@ public class EOSNative {
         String fn = Main.MODID + "_" + splitPath[splitPath.length - 1];
         splitPath[splitPath.length - 1] = fn;
 
-        File parentDir = new File(System.getProperty("java.io.tmpdir"), prefix);
+        File parentDir = new File(getProperty("java.io.tmpdir"), prefix);
         if (!parentDir.exists()) {
             if (!parentDir.mkdirs()) {
                 throw new IOException("Cannot create folder");
