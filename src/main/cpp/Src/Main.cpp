@@ -1041,7 +1041,7 @@ extern "C" {
         globalJVM = vm;
 
         JNIEnv* env;
-        if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8) != JNI_OK) {
+        if (vm->GetEnv(WRAP(&env), JNIV) != JNI_OK) {
             return JNI_ERR;
         }
 
@@ -1055,7 +1055,7 @@ extern "C" {
         byteValueOf = env->GetStaticMethodID(byteClass, "valueOf", "(B)Ljava/lang/Byte;");
         env->DeleteLocalRef(byte);
 
-        return JNI_VERSION_1_8;
+        return JNIV;
     }
 
     JNIEXPORT void JNICALL Java_io_szktas_eos_EOSBinder_EOSNative_init(JNIEnv* env, jclass, jstring name, jstring version, jobject consumer){;
