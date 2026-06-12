@@ -207,11 +207,15 @@ jobs:
           codesign --force --sign - --options=runtime --deep mac.dylib
           install_name_tool -id @rpath/${{ env.name }}_eos.dylib EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
 
-      - name: Strip (Linux)
-        if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
+      - name: Install Strip Utils in Linux
+        if: runner.os == 'Linux' && matrix.build == 'linux' && !inputs.debug
         run: |
           apt-get update
           apt-get -y install llvm 
+
+      - name: Strip (Linux)
+        if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
+        run: |
           llvm-strip --strip-unneeded ${{ matrix.build }}${{ env.arch }}.so
           llvm-strip --strip-unneeded libEOSSDK-${{ case(matrix.build == 'linux', format('Linux{0}-Shipping', env.archpad), format('A{0}', env.arch)) }}.so
 
