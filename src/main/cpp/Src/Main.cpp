@@ -1041,7 +1041,7 @@ extern "C" {
         globalJVM = vm;
 
         JNIEnv* env;
-        if (vm->GetEnv(WRAP(&env), JNIV) != JNI_OK) {
+        if (vm->GetEnv(reinterpret_cast<void**>(&env), JNIV) != JNI_OK) {
             return JNI_ERR;
         }
 
