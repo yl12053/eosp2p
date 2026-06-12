@@ -126,10 +126,10 @@ jobs:
           (yes || true) | sdkmanager "ndk;27.0.12077973"
           export NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
-          echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/" >> $GITHUB_PATH
-          echo "NDK_CPP_INCLUDE=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/include/c++/v1" >> $GITHUB_ENV
-          echo "NDK_INCLUDE=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include" >> $GITHUB_ENV
-          echo "NDK_LIB=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.compre }}-linux-android/24" >> $GITHUB_ENV
+          echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/" >> $GITHUB_PATH
+          echo "NDK_CPP_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/include/c++/v1" >> $GITHUB_ENV
+          echo "NDK_INCLUDE=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include" >> $GITHUB_ENV
+          echo "NDK_LIB=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.compre }}-linux-android/24" >> $GITHUB_ENV
 
       - uses: actions/cache@v5
         with:
