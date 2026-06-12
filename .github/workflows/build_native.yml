@@ -51,7 +51,7 @@ jobs:
           - os: macos-latest
 
     env:
-      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', format('-fvisibility=hidden -fvisibility-inlines-hidden -Wl,--version-script={0}/src/main/cpp/Src/linker.script', github.workspace)) }}
+      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '-fvisibility=hidden -fvisibility-inlines-hidden' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -88,6 +88,11 @@ jobs:
           echo "march=${{ case(runner.arch == 'X64', '-march=x86_64_v2', '') }}" >> $GITHUB_ENV
           echo "arch=${rarch,,}" >> $GITHUB_ENV
           echo "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUB_ENV
+
+      - name: Initialize Compiler Args
+        if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
+        run: |
+          echo "DO_DEBUG_ARG=$DO_DEBUG_ARG -Wl,--version-script=${{ github.workspace }}/src/main/cpp/Src/linker.script" >> $GITHUB_ENV
 
       - name: Initialize Variables
         if: runner.os == 'Linux' && matrix.build == 'android'
