@@ -25,9 +25,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, ubuntu-24.04-arm]
         include:
           - os: ubuntu-latest
+            build: linux
+          - os: ubuntu-24.04-arm
             build: linux
           - os: ubuntu-latest
             build: win
@@ -41,6 +42,7 @@ jobs:
             spec: --target=aarch-w64-mingw32
             subpad: 'arm64'
             fnpad: 'arm64'
+          - os: macos-latest
 
     env:
       DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '') }}
@@ -57,8 +59,6 @@ jobs:
           
           echo "version=$version" >> $GITHUB_ENV
           echo "name=$name" >> $GITHUB_ENV
-          
-          echo "DO_DEBUG_ARG=$DO_DEBUG_ARG" >> $GITHUB_ENV
 
       - name: Download SDK
         run: |
