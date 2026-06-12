@@ -51,7 +51,7 @@ jobs:
           - os: macos-latest
 
     env:
-      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '-fvisibility=hidden -fvisibility-inlines-hidden') }}
+      DO_DEBUG_ARG: ${{ case( inputs.debug, '-g3 -Wall -Wextra -Wpedantic', '') }}
 
     steps:
       - uses: actions/checkout@v6
@@ -88,11 +88,6 @@ jobs:
           echo "march=${{ case(runner.arch == 'X64', '-march=x86_64_v2', '') }}" >> $GITHUB_ENV
           echo "arch=${rarch,,}" >> $GITHUB_ENV
           echo "archpad=${{ case(runner.arch == 'X64', '', 'Arm64') }}" >> $GITHUB_ENV
-
-      - name: Initialize Compiler Args
-        if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
-        run: |
-          echo "DO_DEBUG_ARG=$DO_DEBUG_ARG -Wl,--version-script=${{ github.workspace }}/src/main/cpp/Src/linker.script" >> $GITHUB_ENV
 
       - name: Initialize Variables
         if: runner.os == 'Linux' && matrix.build == 'android'
@@ -206,24 +201,6 @@ jobs:
           install_name_tool -change @rpath/libEOSSDK-Mac-Shipping.dylib @rpath/${{ env.name }}_eos.dylib mac.dylib
           codesign --force --sign - --options=runtime --deep mac.dylib
           install_name_tool -id @rpath/${{ env.name }}_eos.dylib EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
-
-      - name: Install Strip Utils in Linux
-        if: runner.os == 'Linux' && matrix.build == 'linux' && !inputs.debug
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install llvm 
-
-      - name: Strip (Linux)
-        if: runner.os == 'Linux' && matrix.build != 'win' && !inputs.debug
-        run: |
-          llvm-strip --strip-unneeded ${{ matrix.build }}${{ env.arch }}.so
-          llvm-strip --strip-unneeded libEOSSDK-${{ case(matrix.build == 'linux', format('Linux{0}-Shipping', env.archpad), format('A{0}', env.arch)) }}.so
-
-      - name: Strip (MacOS)
-        if: runner.os == 'macOS' && !inputs.debug
-        run: |
-          strip -x mac.dylib
-          strip -x EOSSDK/SDK/Bin/libEOSSDK-Mac-Shipping.dylib
 
       - name: Upload Artifact (Windows)
         uses: actions/upload-artifact@v7
