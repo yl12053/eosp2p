@@ -167,7 +167,7 @@ static void SetThreadToHighPriority() {
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 #elif defined(__APPLE__) || defined(__linux__)
-    setpriority(PRIO_PROCESS, -5, PRIORITY_AS);
+    setpriority(PRIO_PROCESS, 0, -5);
 #endif
 }
 
