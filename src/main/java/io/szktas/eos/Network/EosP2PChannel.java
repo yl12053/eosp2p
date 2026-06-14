@@ -84,7 +84,6 @@ public class EosP2PChannel extends AbstractChannel {
 
     @Override
     protected void doClose() throws Exception {
-        LOGGER.debug("Close stack: ", new RuntimeException("Close stack"));
         if (isClosed.compareAndSet(false, true)) {
             EOSNative.close(local.getPUID(), remote.getPUID(), remote.getSocketID());
             ((Unsafe) this.unsafe()).unregister();
@@ -202,11 +201,8 @@ public class EosP2PChannel extends AbstractChannel {
                     throw new ConnectionPendingException();
                 }
 
-                LOGGER.debug("Register channel");
                 MinecraftForge.EVENT_BUS.register(Unsafe.this);
-                LOGGER.debug("Registered");
                 NetworkUtil.RegisterCallback(EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID(), EosP2PChannel.this.remote.getChannelID(), dataHandler);
-                LOGGER.debug("Callback registered");
 
                 // connectOrAccept(PUID, EosP2PChannel.this.remote.getPUID(), EosP2PChannel.this.remote.getSocketID());
 
