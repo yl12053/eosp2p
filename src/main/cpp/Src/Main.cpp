@@ -941,7 +941,7 @@ static ikcpcb* CreateIKCPFor(char* localPUID, char* remotePUID, char* socketID, 
         kcp->stream = 1;
         ikcp_nodelay(kcp, 1, IKCP_INTERVAL, 2, 1);
         ikcp_setmtu(kcp, 1024);
-        ikcp_wndsize(kcp, 128, 128);
+        ikcp_wndsize(kcp, 512, 512);
 
         IKCPs[fprint] = kcp;
         return kcp;
@@ -1554,22 +1554,36 @@ extern "C" {
             ikcpcb* kcp = it->second;
             auto mtx_ptr = std::launder(static_cast<IKCPData*>(kcp->user))->mutex;
             int sent_val;
+            uint32_t size_of_single = kcp->mss * (128 - 2);
+            uint32_t sent = 0;
             {
                 std::lock_guard mlock(*mtx_ptr);
-                sent_val = ikcp_send(kcp, std::launder(reinterpret_cast<const char*>(bytes.get())), len);
+                do {
+                    sent_val = ikcp_send(
+                        kcp,
+                        std::launder(reinterpret_cast<const char*>(bytes.get()) + sent),
+                        len - sent > size_of_single ? size_of_single : len - sent
+                    );
+                    if (sent_val > 0) {
+                        sent += sent_val;
+                    }
+                } while (sent_val > 0 && sent < len);
             }
             if (sent_val < 0) {
                 switch (sent_val) {
                     case -1:
                         return env->NewStringUTF("--len_less_than_zero");
                     case -2:
+                        Log(0, "Segmentation sent failed.");
+                        Log(0, fmtns::format("count: {0}", (len + kcp->mss - 1) / kcp->mss).c_str());
+                        Log(0, fmtns::format("Len: {0}", len).c_str());
                         return env->NewStringUTF("--seg_failed");
                     default:
                         return env->NewStringUTF("--sent_unknown_error");
                 }
             }
-            if (sent_val < len) {
-                return env->NewStringUTF(std::to_string(sent_val).c_str());
+            if (sent < len) {
+                return env->NewStringUTF(std::to_string(sent).c_str());
             }
         }
         return nullptr;
