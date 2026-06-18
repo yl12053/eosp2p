@@ -37,6 +37,11 @@ public class Main
     // Directly reference a slf4j logger
     public static final Logger LOGGER = LogUtils.getLogger();
 
+    @SuppressWarnings("removal")
+    public Main() {
+        this(FMLJavaModLoadingContext.get());
+    }
+
     public Main(FMLJavaModLoadingContext context)
     {
         IEventBus modEventBus = context.getModEventBus();
