@@ -18,7 +18,9 @@ import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.IConfigSpec;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -27,6 +29,9 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(Main.MODID)
@@ -42,6 +47,7 @@ public class Main
         this(FMLJavaModLoadingContext.get());
     }
 
+    @SuppressWarnings("removal")
     public Main(FMLJavaModLoadingContext context)
     {
         IEventBus modEventBus = context.getModEventBus();
@@ -53,7 +59,15 @@ public class Main
         MinecraftForge.EVENT_BUS.register(this);
 
         // Register our mod's ForgeConfigSpec so that Forge can create and load the config file for us
-        context.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        // context.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        try {
+            Method configMethod = context.getClass().getMethod("registerConfig", ModConfig.Type.class, IConfigSpec.class);
+            configMethod.invoke(context, ModConfig.Type.COMMON, Config.SPEC);
+        } catch (NoSuchMethodException e) {
+            ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void commonSetup(final FMLCommonSetupEvent event)
