@@ -28,9 +28,32 @@ displayName="${mod_name}" #mandatory
 # A URL for the "homepage" for this mod, displayed in the mod UI
 displayURL="https://github.com/yl12053/eosp2p" #optional
 # A file name (in the root of the mod JAR) containing a logo for display
-#logoFile="examplemod.png" #optional
+logoFile="ico.png" #optional
 # A text field displayed in the mod UI
-#credits="" #optional
+credits='''
+This project incorporates the following open-source software libraries. We gratefully acknowledge the authors and contributors for their amazing work.
+
+kcp
+  - Author/Copyright: Copyright (c) 2017 Lin Wei (skywind3000 at gmail.com)
+  - License: MIT License (See Appendix Section 1)
+  - Link: https://github.com/skywind3000/kcp
+skarupke/flat_hash_map
+  - Author/Copyright: Copyright Malte Skarupke 2017
+  - License: Boost Software License, Version 1.0 (See Appendix Section 2)
+  - Link: https://github.com/skarupke/flat_hash_map
+Magic Enum C++
+  - Author/Copyright: Copyright (c) 2019 - 2026 Daniil Goncharov
+  - License: MIT License (See Appendix Section 1)
+  - Link: https://github.com/Neargye/magic_enum
+CPP/CRC
+  - Author/Copyright: Copyright (c) 2022 Darren V Levine
+  - License: MIT License (See Appendix Section 1)
+  - Link: https://github.com/DarrenLevine/cppcrc
+{fmt}
+    - Author/Copyright: Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
+    - License: MIT License (See Appendix Section 1)
+    - Link: https://github.com/fmtlib/fmt
+''' #optional
 # A text field displayed in the mod UI
 authors="${mod_authors}" #optional
 # Display Test controls the display for your mod in the server connection screen
