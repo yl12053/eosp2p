@@ -16,6 +16,10 @@ license="${mod_license}"
 # set this to true, and Forge will set the correct displayTest for you and skip loading your mod on dedicated servers.
 #clientSideOnly=true #optional - defaults to false if absent
 # A list of mods - how many allowed here is determined by the individual mod loader
+# A file name (in the root of the mod JAR) containing a logo for display
+logoFile="ico.png" #optional
+logoBlur=false
+issueTrackerURL = "https://github.com/yl12053/eosp2p/issues"
 [[mods]] #mandatory
 # The modid of the mod
 modId="${mod_id}" #mandatory
@@ -27,8 +31,6 @@ displayName="${mod_name}" #mandatory
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 # A URL for the "homepage" for this mod, displayed in the mod UI
 displayURL="https://github.com/yl12053/eosp2p" #optional
-# A file name (in the root of the mod JAR) containing a logo for display
-logoFile="ico.png" #optional
 # A text field displayed in the mod UI
 credits='''
 This project incorporates the following open-source software libraries. We gratefully acknowledge the authors and contributors for their amazing work.
