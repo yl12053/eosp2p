@@ -63,6 +63,13 @@ public class Config
                     UUID.randomUUID().toString()
             );
 
+    public static final ForgeConfigSpec.BooleanValue RANDOM_CONNECT_STRING = BUILDER
+            .comment("To randomize the connect string everytime or not.")
+            .define(
+                    "random_connect_string",
+                    false
+            );
+
     public static final ForgeConfigSpec.DoubleValue TIMEOUT = BUILDER
             .comment("Timeout before disconnect to EOS Service, unit: second")
             .defineInRange(
